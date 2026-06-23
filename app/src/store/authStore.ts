@@ -2,10 +2,12 @@ import { create } from 'zustand'
 import type { Role } from '@/lib/constants'
 
 interface AuthUser {
-  id: string
+  id: number
   nom: string
+  identifiant: string
   initiales: string
   role: Role
+  caisseId: number | null
   caisse: string | null
 }
 

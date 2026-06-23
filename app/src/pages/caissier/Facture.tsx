@@ -1,135 +1,309 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { ExternalLink, Loader2, Search, Send } from 'lucide-react'
 import { Layout } from '@/components/layout/Layout'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
-import { StatusBadge } from '@/components/shared/StatusBadge'
-import { formatCFA } from '@/lib/formatCFA'
+import { useNotification } from '@/context/NotificationContext'
 import { formatDate } from '@/lib/formatDate'
-import { Printer, Search } from 'lucide-react'
+import { getApiErrorMessage } from '@/lib/apiError'
+import { getInvoice, listInvoices, openInvoicePdf, resendInvoiceSms } from '@/services/invoiceApi'
+import type { InvoiceRecord, InvoiceSmsStatus, InvoiceStatus } from '@/types/invoice'
 
-interface FactureData {
-  id: string; dossier: string; patient: string; tel: string
-  actes: { nom: string; montant: number; checked: boolean }[]
-  total: number; mode: string; statut: 'solde' | 'partiel'; date: Date; ref: string
+
+const statusTone: Record<InvoiceStatus, string> = {
+  EMISE: 'border-green-200 bg-green-50 text-green-700',
+  EN_ATTENTE_CONFIRMATION_BANCAIRE: 'border-amber-200 bg-amber-50 text-amber-700',
+  CHEQUE_REJETE: 'border-red-200 bg-red-50 text-red-700',
 }
 
-const FACTURES: FactureData[] = [
-  { id: 'FA-229-000145', dossier: 'VIS-4792', patient: 'Fatima Kouassi', tel: '+229 97 12 34 56',
-    actes: [{ nom: 'Consultation spécialisée', montant: 3500, checked: true }, { nom: 'Glycémie à jeun', montant: 2000, checked: true }, { nom: 'Paracétamol 500mg ×3', montant: 1500, checked: true }, { nom: 'Amoxicilline 500mg ×6', montant: 2500, checked: false }],
-    total: 7000, mode: 'MoMo', statut: 'solde', date: new Date('2026-06-23T14:32:00'), ref: 'MTN-2026-749-XK91' },
-  { id: 'FA-229-000144', dossier: 'VIS-4795', patient: 'Kofi Mensah', tel: '+229 96 55 44 33',
-    actes: [{ nom: 'Consultation générale', montant: 2000, checked: true }, { nom: 'Analyse tension', montant: 1500, checked: true }],
-    total: 3500, mode: 'Espèces', statut: 'solde', date: new Date('2026-06-23T13:15:00'), ref: '—' },
-  { id: 'FA-229-000143', dossier: 'VIS-4793', patient: 'Aïcha Traoré', tel: '+229 95 44 22 11',
-    actes: [{ nom: 'Douleurs abdominales — urgence', montant: 5000, checked: true }, { nom: 'Amoxicilline 500mg ×6', montant: 4000, checked: false }],
-    total: 5000, mode: 'Chèque', statut: 'partiel', date: new Date('2026-06-23T11:40:00'), ref: 'CHQ-00892' },
-]
+const smsTone: Record<InvoiceSmsStatus, string> = {
+  A_ENVOYER: 'border-zinc-200 bg-zinc-50 text-zinc-600',
+  ENVOYE: 'border-green-200 bg-green-50 text-green-700',
+  ECHEC: 'border-red-200 bg-red-50 text-red-700',
+  LOCAL_LOG: 'border-blue-200 bg-blue-50 text-blue-700',
+}
+
+const methodLabel: Record<InvoiceRecord['moyenPaiement'], string> = {
+  MOBILE_MONEY: 'Mobile Money',
+  ESPECES: 'Especes',
+  CHEQUE: 'Cheque',
+}
+
+const statusLabel: Record<InvoiceStatus, string> = {
+  EMISE: 'Emise',
+  EN_ATTENTE_CONFIRMATION_BANCAIRE: 'En attente bancaire',
+  CHEQUE_REJETE: 'Cheque rejete',
+}
+
+const smsLabel: Record<InvoiceSmsStatus, string> = {
+  A_ENVOYER: 'A envoyer',
+  ENVOYE: 'Envoye',
+  ECHEC: 'Echec',
+  LOCAL_LOG: 'Journal local',
+}
 
 export default function Facture() {
-  const [selected, setSelected] = useState<FactureData>(FACTURES[0])
-  const [query, setQuery] = useState('')
-  const filtered = FACTURES.filter((f) =>
-    f.patient.toLowerCase().includes(query.toLowerCase()) ||
-    f.id.includes(query) || f.dossier.includes(query.toUpperCase())
-  )
-  const initiales = selected.patient.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+  const { toast } = useNotification()
+  const [items, setItems] = useState<InvoiceRecord[]>([])
+  const [selected, setSelected] = useState<InvoiceRecord | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [smsLoading, setSmsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<InvoiceRecord['moyenPaiement'] | ''>('')
+  const [status, setStatus] = useState<InvoiceStatus | ''>('')
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const response = await listInvoices({
+          search: search.trim() || undefined,
+          paymentMethod: paymentMethod || undefined,
+          status: status || undefined,
+          pageSize: 200,
+        })
+        if (cancelled) return
+        setItems(response.items)
+        setSelected((current) => {
+          if (!response.items.length) return null
+          if (current) {
+            const nextSelected = response.items.find((item) => item.numeroFacture === current.numeroFacture)
+            if (nextSelected) return nextSelected
+          }
+          return response.items[0]
+        })
+      } catch (nextError) {
+        if (!cancelled) setError(getApiErrorMessage(nextError, 'Impossible de charger les factures.'))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [paymentMethod, search, status])
+
+  const openInvoiceDetail = async (invoice: InvoiceRecord) => {
+    setSelected(invoice)
+    setDetailLoading(true)
+    try {
+      const detail = await getInvoice(invoice.numeroFacture)
+      setSelected(detail)
+    } catch (nextError) {
+      setError(getApiErrorMessage(nextError, 'Impossible de charger le detail de la facture.'))
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  const handleOpenPdf = async () => {
+    if (!selected) return
+    setPdfLoading(true)
+    try {
+      await openInvoicePdf(selected.numeroFacture)
+    } catch (nextError) {
+      setError(getApiErrorMessage(nextError, "Impossible d'ouvrir le PDF de la facture."))
+    } finally {
+      setPdfLoading(false)
+    }
+  }
+
+  const handleResendSms = async () => {
+    if (!selected) return
+    setSmsLoading(true)
+    try {
+      const updated = await resendInvoiceSms(selected.numeroFacture)
+      setSelected(updated)
+      setItems((current) => current.map((item) => (item.numeroFacture === updated.numeroFacture ? updated : item)))
+      if (updated.smsStatus === 'ENVOYE') {
+        toast('success', 'SMS envoye', `${updated.numeroFacture} transmis au patient.`)
+      } else if (updated.smsStatus === 'LOCAL_LOG') {
+        toast('info', 'SMS journalise localement', `${updated.numeroFacture} est pret pour un envoi reel avec Brevo.`)
+      } else {
+        toast('warning', 'Envoi SMS echoue', updated.smsError || 'Brevo a refuse la tentative.')
+      }
+    } catch (nextError) {
+      setError(getApiErrorMessage(nextError, "Impossible de renvoyer le SMS de facture."))
+    } finally {
+      setSmsLoading(false)
+    }
+  }
 
   return (
     <Layout>
-      <PageHeader title="Factures" subtitle="Consultez et imprimez les factures émises" />
-      <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-5">
-        {/* List */}
+      <PageHeader title="Factures" subtitle="PDF reel, lien public tokenise et suivi SMS" />
+
+      {error && (
+        <Card className="mb-5 border border-red-200 bg-red-50">
+          <p className="text-[13px] text-red-600">{error}</p>
+        </Card>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-[320px_1fr]">
         <Card padding="none">
-          <div className="p-3 border-b border-zinc-100">
+          <div className="space-y-3 border-b border-zinc-100 p-3">
             <div className="relative">
               <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Rechercher…"
-                className="w-full h-9 pl-8 pr-3 rounded-xl text-[13px] border border-zinc-200 bg-zinc-50 focus:border-[#FFCB00] outline-none transition-all" />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Facture, dossier, patient..."
+                className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-8 pr-3 text-[13px] outline-none transition-all focus:border-[#FFCB00] focus:bg-white"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={paymentMethod}
+                onChange={(event) => setPaymentMethod(event.target.value as InvoiceRecord['moyenPaiement'] | '')}
+                className="h-10 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-[13px] outline-none transition-all focus:border-[#FFCB00] focus:bg-white"
+              >
+                <option value="">Tous les modes</option>
+                <option value="MOBILE_MONEY">Mobile Money</option>
+                <option value="ESPECES">Especes</option>
+                <option value="CHEQUE">Cheque</option>
+              </select>
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value as InvoiceStatus | '')}
+                className="h-10 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-[13px] outline-none transition-all focus:border-[#FFCB00] focus:bg-white"
+              >
+                <option value="">Tous les statuts</option>
+                <option value="EMISE">Emise</option>
+                <option value="EN_ATTENTE_CONFIRMATION_BANCAIRE">En attente</option>
+                <option value="CHEQUE_REJETE">Cheque rejete</option>
+              </select>
             </div>
           </div>
-          <div className="divide-y divide-zinc-100 max-h-[520px] overflow-y-auto">
-            {filtered.length === 0 ? (
-              <p className="text-[13px] text-zinc-400 text-center py-8">Aucun résultat</p>
-            ) : filtered.map((f) => (
-              <button key={f.id} onClick={() => setSelected(f)}
-                className={`w-full text-left px-4 py-3.5 hover:bg-zinc-50 transition-colors ${selected.id === f.id ? 'bg-[#FFFAE6] border-l-2 border-l-[#FFCB00]' : ''}`}>
-                <div className="flex items-center justify-between mb-1">
-                  <span className="font-mono text-[11px] font-black text-amber-700">{f.id}</span>
-                  <StatusBadge variant={f.statut} />
-                </div>
-                <p className="text-[13px] font-semibold text-zinc-800">{f.patient}</p>
-                <p className="text-[12px] text-zinc-400 mt-0.5">{formatCFA(f.total)} · {f.mode}</p>
-              </button>
-            ))}
+
+          <div className="max-h-[620px] overflow-y-auto">
+            {loading ? (
+              <p className="px-4 py-10 text-center text-[13px] text-zinc-400">Chargement des factures...</p>
+            ) : items.length === 0 ? (
+              <p className="px-4 py-10 text-center text-[13px] text-zinc-400">Aucune facture pour ces filtres.</p>
+            ) : (
+              items.map((invoice) => (
+                <button
+                  key={invoice.numeroFacture}
+                  onClick={() => void openInvoiceDetail(invoice)}
+                  className={`w-full border-b border-zinc-100 px-4 py-3 text-left transition-colors last:border-0 hover:bg-zinc-50 ${
+                    selected?.numeroFacture === invoice.numeroFacture ? 'bg-[#FFFAE6]' : ''
+                  }`}
+                >
+                  <div className="mb-1 flex items-center justify-between gap-3">
+                    <span className="font-mono text-[11px] font-black text-amber-700">{invoice.numeroFacture}</span>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusTone[invoice.statutDocument]}`}>
+                      {statusLabel[invoice.statutDocument]}
+                    </span>
+                  </div>
+                  <p className="text-[13px] font-semibold text-zinc-800">{invoice.patientNom}</p>
+                  <div className="mt-1 flex items-center justify-between gap-3">
+                    <p className="text-[12px] text-zinc-400">
+                      {invoice.visitId} · {methodLabel[invoice.moyenPaiement]}
+                    </p>
+                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${smsTone[invoice.smsStatus]}`}>
+                      {smsLabel[invoice.smsStatus]}
+                    </span>
+                  </div>
+                </button>
+              ))
+            )}
           </div>
         </Card>
 
-        {/* Detail */}
         <Card>
-          {/* Header */}
-          <div className="flex items-start justify-between pb-5 mb-5 border-b border-zinc-100">
-            <div className="flex items-center gap-4">
-              <div className="w-12 h-12 rounded-2xl bg-[#FFFAE6] border border-[#FDE68A] flex items-center justify-center shrink-0">
-                <span className="font-mono font-black text-[13px] text-[#92400E]">{initiales}</span>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className="font-mono text-[13px] font-black text-amber-700">{selected.id}</span>
-                  <StatusBadge variant={selected.statut} />
+          {!selected ? (
+            <div className="py-16 text-center text-[13px] text-zinc-400">Selectionnez une facture pour afficher son detail.</div>
+          ) : (
+            <>
+              <div className="mb-5 flex items-start justify-between gap-4 border-b border-zinc-100 pb-5">
+                <div>
+                  <div className="mb-2 flex flex-wrap items-center gap-2">
+                    <span className="font-mono text-[13px] font-black text-amber-700">{selected.numeroFacture}</span>
+                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusTone[selected.statutDocument]}`}>
+                      {statusLabel[selected.statutDocument]}
+                    </span>
+                    <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${smsTone[selected.smsStatus]}`}>
+                      SMS {smsLabel[selected.smsStatus]}
+                    </span>
+                  </div>
+                  <p className="text-[16px] font-bold text-zinc-900">{selected.patientNom}</p>
+                  <p className="text-[12px] text-zinc-400">
+                    {selected.patientTel} · {selected.visitId}
+                  </p>
                 </div>
-                <p className="text-[15px] font-bold text-zinc-900">{selected.patient}</p>
-                <p className="text-[12px] text-zinc-400">{selected.tel} · {formatDate(selected.date)}</p>
-              </div>
-            </div>
-            <button onClick={() => window.print()}
-              className="flex items-center gap-2 px-4 py-2 rounded-xl border border-zinc-200 text-[13px] font-semibold text-zinc-600 hover:bg-zinc-50 hover:border-zinc-300 transition-all">
-              <Printer size={14} />Imprimer
-            </button>
-          </div>
 
-          {/* Info grid */}
-          <div className="grid grid-cols-2 gap-4 p-4 rounded-2xl bg-zinc-50 border border-zinc-100 mb-5">
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">N° Dossier</p>
-              <p className="font-mono font-black text-[14px] text-amber-700">{selected.dossier}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Mode de paiement</p>
-              <p className="text-[14px] font-semibold text-zinc-800">{selected.mode}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Référence</p>
-              <p className="font-mono text-[13px] text-zinc-600">{selected.ref}</p>
-            </div>
-            <div>
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400 mb-1">Date d'émission</p>
-              <p className="text-[13px] text-zinc-600">{formatDate(selected.date)}</p>
-            </div>
-          </div>
-
-          {/* Actes */}
-          <div className="rounded-2xl border border-zinc-200 overflow-hidden mb-5">
-            <div className="px-4 py-2.5 bg-zinc-50 border-b border-zinc-200">
-              <div className="flex justify-between text-[10px] font-semibold uppercase tracking-widest text-zinc-400">
-                <span>Acte médical</span><span>Montant</span>
-              </div>
-            </div>
-            {selected.actes.map((a, i) => (
-              <div key={i} className={`flex justify-between items-center px-4 py-3 border-b border-zinc-100 last:border-0 ${!a.checked ? 'opacity-40' : ''}`}>
-                <div className="flex items-center gap-2">
-                  {!a.checked && <span className="text-[10px] bg-red-50 text-red-600 border border-red-200 px-1.5 py-0.5 rounded font-semibold">Non honoré</span>}
-                  <span className={`text-[14px] text-zinc-700 ${!a.checked ? 'line-through' : ''}`}>{a.nom}</span>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => void handleOpenPdf()}
+                    disabled={pdfLoading}
+                    className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 px-4 py-2 text-[13px] font-semibold text-zinc-700 transition-colors hover:bg-zinc-50 disabled:opacity-60"
+                  >
+                    {pdfLoading ? <Loader2 size={14} className="animate-spin" /> : <ExternalLink size={14} />}
+                    Voir PDF
+                  </button>
+                  <button
+                    onClick={() => void handleResendSms()}
+                    disabled={smsLoading}
+                    className="inline-flex items-center gap-2 rounded-xl bg-[#FFCB00] px-4 py-2 text-[13px] font-semibold text-zinc-900 transition-colors hover:bg-[#f0c100] disabled:opacity-60"
+                  >
+                    {smsLoading ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                    Renvoyer SMS
+                  </button>
                 </div>
-                <span className={`font-mono font-semibold text-[13px] ${!a.checked ? 'text-zinc-300 line-through' : 'text-zinc-900'}`}>{formatCFA(a.montant)}</span>
               </div>
-            ))}
-          </div>
 
-          {/* Total */}
-          <div className="flex justify-between items-center px-5 py-4 rounded-2xl bg-[#1A1A1A]">
-            <span className="text-[13px] font-bold text-zinc-400 uppercase tracking-wider">Total payé</span>
-            <span className="font-mono font-black text-[22px] text-white">{formatCFA(selected.total)}</span>
-          </div>
+              {detailLoading && (
+                <div className="mb-4 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[13px] text-zinc-500">
+                  Actualisation du detail facture...
+                </div>
+              )}
+
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Mode de paiement</p>
+                  <p className="text-[14px] font-semibold text-zinc-800">{methodLabel[selected.moyenPaiement]}</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Reference</p>
+                  <p className="font-mono text-[13px] font-semibold text-zinc-700">{selected.reference || '-'}</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Date d'emission</p>
+                  <p className="text-[13px] text-zinc-700">{formatDate(selected.createdAt)}</p>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
+                  <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Dernier envoi SMS</p>
+                  <p className="text-[13px] text-zinc-700">{selected.smsSentAt ? formatDate(selected.smsSentAt) : '-'}</p>
+                </div>
+              </div>
+
+              <div className="mt-5 grid gap-4 md:grid-cols-2">
+                <div className="rounded-2xl border border-zinc-200 p-4">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Mention de paiement</p>
+                  <p className="text-[14px] leading-relaxed text-zinc-700">
+                    {selected.mentionPaiement || 'Aucune mention supplementaire pour cette facture.'}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-zinc-200 p-4">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Lien public patient</p>
+                  <p className="break-all text-[12px] leading-relaxed text-zinc-600">{selected.publicDownloadUrl}</p>
+                  {selected.smsError && (
+                    <p className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600">
+                      {selected.smsError}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </>
+          )}
         </Card>
       </div>
     </Layout>
