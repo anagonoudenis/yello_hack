@@ -1,62 +1,237 @@
+import { useEffect, useState } from 'react'
 import { Layout } from '@/components/layout/Layout'
 import { PageHeader } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
-import { DataTable, type Column } from '@/components/shared/DataTable'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { formatCFA } from '@/lib/formatCFA'
 import { formatDate } from '@/lib/formatDate'
+import { getApiErrorMessage } from '@/lib/apiError'
+import { listTransactions } from '@/services/transactionApi'
+import type { PaymentMethod, PaymentStatus, TransactionRecord, TransactionSummary } from '@/types/transaction'
 
-interface Tx { id: string; patient: string; montant: number; mode: string; statut: 'solde' | 'partiel' | 'attente'; date: Date; ref: string }
 
-const DATA: Tx[] = [
-  { id: 'FA-229-000145', patient: 'Fatima Kouassi',     montant: 7000,  mode: 'MoMo',    statut: 'solde',   date: new Date('2026-06-23T14:32:00'), ref: 'MTN-2026-749-XK91' },
-  { id: 'FA-229-000144', patient: 'Kofi Mensah',        montant: 3500,  mode: 'Espèces', statut: 'solde',   date: new Date('2026-06-23T13:15:00'), ref: '—' },
-  { id: 'FA-229-000143', patient: 'Aïcha Traoré',       montant: 9000,  mode: 'Chèque',  statut: 'partiel', date: new Date('2026-06-23T11:40:00'), ref: 'CHQ-00892' },
-  { id: 'FA-229-000142', patient: 'Jean-Baptiste D.',   montant: 2000,  mode: 'MoMo',    statut: 'solde',   date: new Date('2026-06-23T10:05:00'), ref: 'MTN-2026-748-PR44' },
-  { id: 'FA-229-000141', patient: 'Marie Ahoué',        montant: 15000, mode: 'Espèces', statut: 'solde',   date: new Date('2026-06-23T09:20:00'), ref: '—' },
-  { id: 'FA-229-000140', patient: 'Pierre Agossou',     montant: 4500,  mode: 'MoMo',    statut: 'attente', date: new Date('2026-06-22T16:50:00'), ref: '—' },
-]
+const today = new Date().toISOString().slice(0, 10)
 
-const MODE_STYLE: Record<string, string> = {
-  MoMo: 'bg-amber-50 text-amber-700 border border-amber-200',
-  Espèces: 'bg-green-50 text-green-700 border border-green-200',
-  Chèque: 'bg-blue-50 text-blue-700 border border-blue-200',
+const paymentMethodLabel: Record<PaymentMethod, string> = {
+  MOBILE_MONEY: 'Mobile Money',
+  ESPECES: 'Especes',
+  CHEQUE: 'Cheque',
 }
 
-const COLS: Column<Tx>[] = [
-  { key: 'id', label: 'Facture', render: (r) => <span className="font-mono text-[12px] font-bold px-2 py-0.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200">{r.id}</span> },
-  { key: 'patient', label: 'Patient', render: (r) => (
-    <div className="flex items-center gap-2.5">
-      <div className="w-7 h-7 rounded-full bg-zinc-100 flex items-center justify-center shrink-0">
-        <span className="text-[9px] font-black text-zinc-500">{r.patient.split(' ').map((n) => n[0]).join('').slice(0,2)}</span>
-      </div>
-      <span className="text-[13px] font-semibold text-zinc-800">{r.patient}</span>
-    </div>
-  )},
-  { key: 'montant', label: 'Montant', align: 'right', sortable: true, render: (r) => <span className="font-mono font-bold text-[13px] text-zinc-900">{formatCFA(r.montant)}</span> },
-  { key: 'mode', label: 'Mode', render: (r) => <span className={`text-[11px] font-semibold px-2.5 py-0.5 rounded-full ${MODE_STYLE[r.mode]}`}>{r.mode}</span> },
-  { key: 'statut', label: 'Statut', render: (r) => <StatusBadge variant={r.statut} /> },
-  { key: 'ref', label: 'Référence', render: (r) => <span className="font-mono text-[11px] text-zinc-400">{r.ref}</span> },
-  { key: 'date', label: 'Date', render: (r) => <span className="text-[12px] text-zinc-400">{formatDate(r.date)}</span> },
-]
+const paymentStatusLabel: Record<PaymentStatus, string> = {
+  EN_ATTENTE: 'En attente',
+  CONFIRME: 'Confirme',
+  ECHOUE: 'Echoue',
+  RECU: 'Recu',
+  ENCAISSE: 'Encaisse',
+  REJETE: 'Rejete',
+}
+
+const transactionVariant = (transaction: TransactionRecord) => {
+  if (transaction.statut === 'SOLDE') return 'solde'
+  if (transaction.statut === 'PARTIELLEMENT_SOLDE') return 'partiel'
+  if (transaction.statut === 'EN_ATTENTE') return 'attente'
+  return 'verrouille'
+}
+
+const paymentChip = (payment: TransactionRecord['latestPayment']) => {
+  if (payment.moyenPaiement === 'MOBILE_MONEY') return 'bg-amber-50 text-amber-700 border border-amber-200'
+  if (payment.moyenPaiement === 'ESPECES') return 'bg-green-50 text-green-700 border border-green-200'
+  return 'bg-blue-50 text-blue-700 border border-blue-200'
+}
 
 export default function Historique() {
-  const total = DATA.filter((d) => d.statut === 'solde').reduce((s, d) => s + d.montant, 0)
+  const [items, setItems] = useState<TransactionRecord[]>([])
+  const [summary, setSummary] = useState<TransactionSummary>({
+    encaisseFcfa: 0,
+    especesFcfa: 0,
+    chequesFcfa: 0,
+    momoFcfa: 0,
+  })
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [search, setSearch] = useState('')
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | ''>('')
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus | ''>('')
+  const [dateFrom, setDateFrom] = useState(today)
+  const [dateTo, setDateTo] = useState(today)
+
+  useEffect(() => {
+    let cancelled = false
+
+    const load = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const response = await listTransactions({
+          search: search.trim() || undefined,
+          paymentMethod: paymentMethod || undefined,
+          paymentStatus: paymentStatus || undefined,
+          dateFrom,
+          dateTo,
+          pageSize: 200,
+        })
+        if (cancelled) return
+        setItems(response.items)
+        setSummary(response.summary)
+      } catch (nextError) {
+        if (cancelled) return
+        setError(getApiErrorMessage(nextError, "Impossible de charger l'historique des transactions."))
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [dateFrom, dateTo, paymentMethod, paymentStatus, search])
+
   return (
     <Layout>
       <PageHeader
         title="Historique des transactions"
-        subtitle="Toutes les factures émises sur votre caisse"
-        actions={
-          <div className="text-right">
-            <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Total encaissé</p>
-            <p className="font-mono font-black text-[20px] text-zinc-900">{formatCFA(total)}</p>
+        subtitle="Journal reel des encaissements de votre caisse"
+        actions={(
+          <div className="grid grid-cols-2 gap-3 text-right">
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Total encaisse</p>
+              <p className="font-mono text-[20px] font-black text-zinc-900">{formatCFA(summary.encaisseFcfa)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-zinc-400">Especes / Cheques</p>
+              <p className="font-mono text-[16px] font-black text-zinc-900">
+                {formatCFA(summary.especesFcfa)} / {formatCFA(summary.chequesFcfa)}
+              </p>
+            </div>
           </div>
-        }
+        )}
       />
-      <Card padding="sm">
-        <DataTable<Tx> columns={COLS} data={DATA} searchable searchKeys={['patient', 'id', 'mode']}
-          emptyMessage="Aucune transaction enregistrée pour cette caisse aujourd'hui" />
+
+      <Card className="mb-5">
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="VIS, patient, telephone..."
+            className="h-10 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-[13px] outline-none transition-all focus:border-[#FFCB00] focus:bg-white"
+          />
+          <select
+            value={paymentMethod}
+            onChange={(event) => setPaymentMethod(event.target.value as PaymentMethod | '')}
+            className="h-10 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-[13px] outline-none transition-all focus:border-[#FFCB00] focus:bg-white"
+          >
+            <option value="">Tous les modes</option>
+            <option value="MOBILE_MONEY">Mobile Money</option>
+            <option value="ESPECES">Especes</option>
+            <option value="CHEQUE">Cheque</option>
+          </select>
+          <select
+            value={paymentStatus}
+            onChange={(event) => setPaymentStatus(event.target.value as PaymentStatus | '')}
+            className="h-10 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-[13px] outline-none transition-all focus:border-[#FFCB00] focus:bg-white"
+          >
+            <option value="">Tous les statuts</option>
+            <option value="CONFIRME">Confirme</option>
+            <option value="RECU">Cheque recu</option>
+            <option value="ENCAISSE">Cheque encaisse</option>
+            <option value="REJETE">Cheque rejete</option>
+            <option value="EN_ATTENTE">Mobile Money en attente</option>
+            <option value="ECHOUE">Paiement echoue</option>
+          </select>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => setDateFrom(event.target.value)}
+            className="h-10 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-[13px] outline-none transition-all focus:border-[#FFCB00] focus:bg-white"
+          />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(event) => setDateTo(event.target.value)}
+            className="h-10 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-[13px] outline-none transition-all focus:border-[#FFCB00] focus:bg-white"
+          />
+        </div>
+      </Card>
+
+      {error && (
+        <Card className="mb-5 border border-red-200 bg-red-50">
+          <p className="text-[13px] text-red-600">{error}</p>
+        </Card>
+      )}
+
+      <Card padding="none">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[980px]">
+            <thead>
+              <tr className="border-b border-zinc-200 bg-zinc-50">
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Dossier</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Patient</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Mode</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Statut paiement</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Statut dossier</th>
+                <th className="px-4 py-3 text-right text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Montant</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Reference</th>
+                <th className="px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-widest text-zinc-500">Date</th>
+              </tr>
+            </thead>
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-[13px] text-zinc-400">
+                    Chargement des transactions...
+                  </td>
+                </tr>
+              ) : items.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="px-4 py-12 text-center text-[13px] text-zinc-400">
+                    Aucune transaction ne correspond a ces filtres.
+                  </td>
+                </tr>
+              ) : (
+                items.map((item) => (
+                  <tr key={item.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50/70">
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="font-mono text-[12px] font-black text-amber-700">{item.visitId}</p>
+                        <p className="text-[11px] text-zinc-400">TX-{item.id}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div>
+                        <p className="text-[13px] font-semibold text-zinc-800">{item.patientNom}</p>
+                        <p className="text-[11px] text-zinc-400">{item.patientTel}</p>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ${paymentChip(item.latestPayment)}`}>
+                        {paymentMethodLabel[item.latestPayment.moyenPaiement]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="text-[12px] font-semibold text-zinc-700">
+                        {paymentStatusLabel[item.latestPayment.statut]}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge variant={transactionVariant(item)} />
+                    </td>
+                    <td className="px-4 py-3 text-right font-mono text-[13px] font-bold text-zinc-900">
+                      {formatCFA(item.montantEncaisseFcfa)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="font-mono text-[11px] text-zinc-500">
+                        {item.latestPayment.referencePaiement || item.latestPayment.chequeNumero || '-'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-[12px] text-zinc-500">{formatDate(item.createdAt)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </Card>
     </Layout>
   )

@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import { Layout } from '@/components/layout/Layout'
 import { PageHeader, Btn } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
@@ -5,75 +6,184 @@ import { DataTable, type Column } from '@/components/shared/DataTable'
 import { StatusBadge } from '@/components/shared/StatusBadge'
 import { formatDate } from '@/lib/formatDate'
 import { useNavigate } from 'react-router-dom'
-import useVisitStore from '@/store/visitStore'
-import type { Dossier } from '@/lib/constants'
-import { UserPlus, Clock, CheckCircle, AlertCircle } from 'lucide-react'
+import { listVisits } from '@/services/visitApi'
+import type { VisitRecord } from '@/types/visit'
+import { UserPlus, Clock, CheckCircle, CreditCard, Loader2 } from 'lucide-react'
 
-const COLS: Column<Dossier>[] = [
-  { key: 'id', label: 'N° Dossier', render: (r) => (
-    <span className="font-mono text-[12px] font-black px-2.5 py-1 rounded-xl bg-amber-50 text-amber-700 border border-amber-200">{r.id}</span>
-  )},
-  { key: 'nom', label: 'Patient', render: (r) => (
-    <div className="flex items-center gap-2.5">
-      <div className="w-8 h-8 rounded-full bg-zinc-100 flex items-center justify-center shrink-0">
-        <span className="text-[10px] font-black text-zinc-500">{r.nom.split(' ').map((n) => n[0]).join('').slice(0, 2)}</span>
+const statusToVariant = (status: VisitRecord['statut']) => {
+  if (status === 'SOLDE') return 'solde'
+  if (status === 'PARTIELLEMENT_SOLDE') return 'partiel'
+  if (status === 'EN_CAISSE') return 'encaisse'
+  return 'attente'
+}
+
+const COLS: Column<VisitRecord>[] = [
+  {
+    key: 'idVisite',
+    label: 'N° Dossier',
+    render: (row) => (
+      <span className="rounded-xl border border-amber-200 bg-amber-50 px-2.5 py-1 font-mono text-[12px] font-black text-amber-700">
+        {row.idVisite}
+      </span>
+    ),
+  },
+  {
+    key: 'patientNomComplet',
+    label: 'Patient',
+    render: (row) => (
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+          <span className="text-[10px] font-black text-zinc-500">
+            {row.patientNomComplet
+              .split(' ')
+              .map((chunk) => chunk[0])
+              .join('')
+              .slice(0, 2)}
+          </span>
+        </div>
+        <div>
+          <p className="text-[13px] font-semibold text-zinc-800">{row.patientNomComplet}</p>
+          <p className="text-[11px] text-zinc-400">{row.patientTel}</p>
+        </div>
       </div>
-      <div>
-        <p className="text-[13px] font-semibold text-zinc-800">{r.nom}</p>
-        <p className="text-[11px] text-zinc-400">{r.tel}</p>
-      </div>
-    </div>
-  )},
-  { key: 'motif', label: 'Motif', render: (r) => <span className="text-[13px] text-zinc-600">{r.motif}</span> },
-  { key: 'service', label: 'Service', render: (r) => (
-    <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-zinc-100 text-zinc-600">{r.service}</span>
-  )},
-  { key: 'statut', label: 'Statut', render: (r) => (
-    <StatusBadge variant={r.statut === 'SOLDE' ? 'solde' : r.statut === 'EN_ATTENTE' ? 'attente' : 'partiel'} />
-  )},
-  { key: 'date', label: 'Enregistré', render: (r) => <span className="text-[12px] text-zinc-400">{formatDate(r.date)}</span> },
+    ),
+  },
+  {
+    key: 'motifVisite',
+    label: 'Motif',
+    render: (row) => <span className="text-[13px] text-zinc-600">{row.motifVisite}</span>,
+  },
+  {
+    key: 'serviceOriente',
+    label: 'Service',
+    render: (row) => (
+      <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-semibold text-zinc-600">
+        {row.serviceOriente}
+      </span>
+    ),
+  },
+  {
+    key: 'statut',
+    label: 'Statut',
+    render: (row) => <StatusBadge variant={statusToVariant(row.statut)} />,
+  },
+  {
+    key: 'createdAt',
+    label: 'Enregistre',
+    render: (row) => <span className="text-[12px] text-zinc-400">{formatDate(row.createdAt)}</span>,
+  },
 ]
 
 export default function Dossiers() {
-  const { dossiers } = useVisitStore()
   const navigate = useNavigate()
-  const total = dossiers.length
-  const soldes = dossiers.filter((d) => d.statut === 'SOLDE').length
-  const attente = dossiers.filter((d) => d.statut === 'EN_ATTENTE').length
-  const partiel = dossiers.filter((d) => d.statut === 'PARTIELLEMENT_SOLDE').length
+  const [visits, setVisits] = useState<VisitRecord[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    const run = async () => {
+      setLoading(true)
+      setError('')
+      try {
+        const res = await listVisits({ todayOnly: true, pageSize: 200 })
+        if (active) setVisits(res.items)
+      } catch {
+        if (active) setError('Impossible de charger les dossiers du jour.')
+      } finally {
+        if (active) setLoading(false)
+      }
+    }
+    void run()
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const counters = useMemo(
+    () => ({
+      attente: visits.filter((item) => item.statut === 'EN_ATTENTE').length,
+      encaisse: visits.filter((item) => item.statut === 'EN_CAISSE').length,
+      clotures: visits.filter((item) => item.statut === 'SOLDE' || item.statut === 'PARTIELLEMENT_SOLDE')
+        .length,
+    }),
+    [visits]
+  )
 
   return (
     <Layout>
       <PageHeader
         title="Dossiers patients"
-        subtitle={`${total} dossier${total > 1 ? 's' : ''} enregistré${total > 1 ? 's' : ''} aujourd'hui`}
-        actions={<Btn variant="primary" icon={UserPlus} onClick={() => navigate('/accueil/enregistrement')}>Nouveau patient</Btn>}
+        subtitle={`${visits.length} dossier${visits.length > 1 ? 's' : ''} charge${visits.length > 1 ? 's' : ''} pour aujourd'hui`}
+        actions={
+          <Btn variant="primary" icon={UserPlus} onClick={() => navigate('/accueil/enregistrement')}>
+            Nouveau patient
+          </Btn>
+        }
       />
 
-      <div className="grid grid-cols-3 gap-4 mb-6">
+      <div className="mb-6 grid grid-cols-1 gap-4 md:grid-cols-3">
         {[
-          { label: 'En attente', count: attente, icon: Clock, bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200', iconColor: 'text-amber-500' },
-          { label: 'Soldés',     count: soldes,  icon: CheckCircle, bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200', iconColor: 'text-green-500' },
-          { label: 'Partiels',   count: partiel, icon: AlertCircle, bg: 'bg-blue-50',  text: 'text-blue-700',  border: 'border-blue-200',  iconColor: 'text-blue-500' },
-        ].map((s) => (
-          <div key={s.label} className={`${s.bg} rounded-2xl border ${s.border} p-5 flex items-center gap-4`}>
-            <div className={`w-10 h-10 rounded-2xl bg-white flex items-center justify-center border ${s.border}`}>
-              <s.icon size={16} className={s.iconColor} />
+          {
+            label: 'En attente',
+            count: counters.attente,
+            icon: Clock,
+            bg: 'bg-amber-50',
+            text: 'text-amber-700',
+            border: 'border-amber-200',
+            iconColor: 'text-amber-500',
+          },
+          {
+            label: 'En caisse',
+            count: counters.encaisse,
+            icon: CreditCard,
+            bg: 'bg-blue-50',
+            text: 'text-blue-700',
+            border: 'border-blue-200',
+            iconColor: 'text-blue-500',
+          },
+          {
+            label: 'Clotures',
+            count: counters.clotures,
+            icon: CheckCircle,
+            bg: 'bg-green-50',
+            text: 'text-green-700',
+            border: 'border-green-200',
+            iconColor: 'text-green-500',
+          },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className={`${item.bg} ${item.border} flex items-center gap-4 rounded-2xl border p-5`}
+          >
+            <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${item.border} bg-white`}>
+              <item.icon size={16} className={item.iconColor} />
             </div>
             <div>
-              <p className={`font-black text-[28px] ${s.text} leading-none`}>{s.count}</p>
-              <p className={`text-[12px] font-semibold ${s.text} mt-0.5`}>{s.label}</p>
+              <p className={`text-[28px] font-black leading-none ${item.text}`}>{item.count}</p>
+              <p className={`mt-0.5 text-[12px] font-semibold ${item.text}`}>{item.label}</p>
             </div>
           </div>
         ))}
       </div>
 
       <Card padding="sm">
-        <DataTable<Dossier>
-          columns={COLS} data={dossiers}
-          searchable searchKeys={['nom', 'id', 'service', 'motif']}
-          emptyMessage="Aucun dossier enregistré — cliquez sur Nouveau patient pour commencer"
-        />
+        {loading ? (
+          <div className="flex items-center justify-center gap-2 py-10 text-[13px] text-zinc-400">
+            <Loader2 size={14} className="animate-spin" />
+            Chargement des dossiers...
+          </div>
+        ) : error ? (
+          <div className="py-8 text-center text-[13px] text-red-500">{error}</div>
+        ) : (
+          <DataTable<VisitRecord>
+            columns={COLS}
+            data={visits}
+            searchable
+            searchKeys={['patientNomComplet', 'idVisite', 'serviceOriente', 'motifVisite', 'patientTel']}
+            emptyMessage="Aucun dossier enregistre aujourd'hui."
+          />
+        )}
       </Card>
     </Layout>
   )

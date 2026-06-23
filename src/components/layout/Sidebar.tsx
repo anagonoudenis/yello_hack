@@ -4,12 +4,11 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Wallet, ClipboardList, FileText, LogOut,
   AlertTriangle, Users, BookOpen, Activity, BarChart3,
-  Building2, UserCog, ScrollText, ChevronLeft, Menu, X,
+  Building2, UserCog, ScrollText, ChevronLeft, Menu, X, Database,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useAuth } from '@/hooks/useAuth'
 import type { Role } from '@/lib/constants'
-import useAlertStore from '@/store/alertStore'
 
 /* ─── Context ─────────────────────────────────────── */
 const SidebarCtx = createContext({ collapsed: false })
@@ -37,6 +36,11 @@ const NAV: Record<Role, { section: string; items: NavItem[] }[]> = {
     { label: 'Catalogue', to: '/admin/catalogue', icon: BookOpen },
     { label: 'Caisses',   to: '/admin/caisses',   icon: Wallet },
     { label: 'Comptes',   to: '/admin/comptes',   icon: UserCog },
+    { label: 'Versements', to: '/admin/versements', icon: Building2 },
+    { label: 'Alertes', to: '/admin/alertes', icon: AlertTriangle },
+    { label: 'Rapports', to: '/admin/rapports', icon: BarChart3 },
+    { label: 'Journal', to: '/admin/journal-audit', icon: Activity },
+    { label: 'Sauvegardes', to: '/admin/sauvegardes', icon: Database },
   ]}],
   auditeur: [{ section: 'Audit', items: [
     { label: 'Relevé',  to: '/auditeur/releve',  icon: ScrollText },
@@ -56,7 +60,6 @@ function SidebarInner({ collapsed, onClose, onToggle }: {
   collapsed: boolean; onClose?: () => void; onToggle?: () => void
 }) {
   const { user, signOut } = useAuth()
-  const hasCritique = useAlertStore((s) => s.hasCritique)
   const navigate = useNavigate()
   if (!user) return null
 
@@ -145,12 +148,6 @@ function SidebarInner({ collapsed, onClose, onToggle }: {
                         </motion.span>
                       )}
                     </AnimatePresence>
-                    {item.label === 'Alertes' && hasCritique && !collapsed && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-[#EF4444] animate-pulse-dot shrink-0" />
-                    )}
-                    {item.label === 'Alertes' && hasCritique && collapsed && (
-                      <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[#EF4444] border-2 border-[#111] animate-pulse-dot" />
-                    )}
                   </>
                 )}
               </NavLink>

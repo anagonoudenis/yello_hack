@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils'
 
-type StatusVariant = 'solde' | 'attente' | 'partiel' | 'critique' | 'haute' | 'moyenne' | 'verrouille' | 'lecture'
+type StatusVariant = 'solde' | 'attente' | 'encaisse' | 'partiel' | 'critique' | 'haute' | 'moyenne' | 'verrouille' | 'lecture'
 
 interface StatusBadgeProps {
   variant: StatusVariant
@@ -10,6 +10,7 @@ interface StatusBadgeProps {
 const VARIANTS: Record<StatusVariant, { bg: string; text: string; dot: string; label: string }> = {
   solde:      { bg: '#F0FDF4', text: '#166534', dot: '#22C55E', label: 'Soldé' },
   attente:    { bg: '#FFFBEB', text: '#92400E', dot: '#F59E0B', label: 'En attente' },
+  encaisse:   { bg: '#EFF6FF', text: '#1D4ED8', dot: '#3B82F6', label: 'En caisse' },
   partiel:    { bg: '#EFF6FF', text: '#1E40AF', dot: '#3B82F6', label: 'Partiel' },
   critique:   { bg: '#FEF2F2', text: '#991B1B', dot: '#EF4444', label: 'Critique' },
   haute:      { bg: '#FEF2F2', text: '#991B1B', dot: '#F97316', label: 'Haute' },

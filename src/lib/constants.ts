@@ -99,6 +99,7 @@ export const MOCK_CAISSES: Caisse[] = [
 ]
 
 export const MOCK_USERS = [
+  { id: '0', nom: 'Administrateur', initiales: 'AD', role: 'admin' as Role, caisse: null, identifiant: 'admin', motDePasse: '1234' },
   { id: '1', nom: 'Amadou Kéïta', initiales: 'AK', role: 'caissier' as Role, caisse: 'Caisse principale', identifiant: 'amadou.k', motDePasse: '1234' },
   { id: '2', nom: 'Marie Dupont', initiales: 'MD', role: 'superviseur' as Role, caisse: null, identifiant: 'marie.d', motDePasse: '1234' },
   { id: '3', nom: 'Jean Accueil', initiales: 'JA', role: 'accueil' as Role, caisse: null, identifiant: 'jean.a', motDePasse: '1234' },
