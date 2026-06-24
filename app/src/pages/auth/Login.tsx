@@ -34,29 +34,26 @@ export default function Login() {
   }
 
   return (
-    <div className="min-h-screen bg-white lg:h-screen lg:max-h-screen lg:overflow-hidden">
-      <div className="relative mx-auto min-h-screen max-w-[1600px] bg-white lg:h-screen">
+    <div className="min-h-screen bg-[#FDFCF8] lg:h-screen lg:max-h-screen lg:overflow-hidden">
+      <div className="relative mx-auto min-h-screen lg:h-screen">
 
-        {/* Décorations fond gauche */}
-        <div className="absolute left-[8%] top-14 hidden h-5 w-28 rounded-md bg-[#E8EEF5] lg:block" />
-        <div className="absolute left-[8%] top-[30%] hidden h-5 w-40 rounded-md bg-[#E8EEF5] lg:block" />
-        <div className="absolute left-[8%] top-[36%] hidden h-5 w-56 rounded-md bg-[#E8EEF5] lg:block" />
-        <div className="absolute left-[8%] top-[44%] hidden h-2.5 w-52 rounded-full bg-[#EAEFF5] lg:block" />
-        <div className="absolute left-[8%] top-[48%] hidden h-2.5 w-56 rounded-full bg-[#EEF2F7] lg:block" />
-        <div className="absolute left-[8%] top-[52%] hidden h-2.5 w-48 rounded-full bg-[#EEF2F7] lg:block" />
-        <div className="absolute left-[8%] top-[62%] hidden h-10 w-24 rounded-xl bg-[#FDE8A6] lg:block" />
+        {/* Fond dégradé global — unifié, pas de séparation visible */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute right-0 top-0 h-full w-1/2 bg-[#FFF8E6]" />
+          <div className="absolute right-0 top-0 h-full w-[60%] bg-gradient-to-l from-[#FFF6DA] via-[#FFF8E6] to-transparent" />
+        </div>
 
-        <div className="grid min-h-screen lg:h-screen lg:grid-cols-2">
+        <div className="relative grid min-h-screen lg:h-screen lg:grid-cols-[1fr_1fr]">
 
-          {/* ── Colonne gauche — formulaire ── */}
+          {/* ── Colonne gauche — formulaire centré ── */}
           <motion.section
             initial={{ opacity: 0, x: -24 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
-            className="relative z-10 flex min-h-screen items-center px-5 py-8 sm:px-8 lg:h-screen lg:min-h-0 lg:px-16 xl:px-24"
+            className="flex min-h-screen items-center justify-center px-5 py-10 lg:h-screen lg:min-h-0 lg:px-10"
           >
-            <div className="w-full">
-              <div className="rounded-[28px] border border-zinc-100 bg-white p-6 shadow-[0_8px_32px_rgba(0,0,0,0.06)] sm:p-8">
+            <div className="w-full max-w-[420px]">
+              <div className="rounded-[28px] border border-zinc-100/80 bg-white p-7 shadow-[0_8px_40px_rgba(0,0,0,0.07)]">
 
                 {/* Logo Clinica */}
                 <div className="mb-6 flex items-center gap-3">
@@ -174,43 +171,24 @@ export default function Login() {
             </div>
           </motion.section>
 
-          {/* ── Colonne droite — illustration ── */}
+          {/* ── Colonne droite — illustration (fond transparent, unifié) ── */}
           <motion.section
-            initial={{ opacity: 0, x: 28 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1], delay: 0.08 }}
-            className="relative hidden overflow-hidden bg-white lg:flex lg:h-screen"
+            initial={{ opacity: 0, scale: 0.97 }}
+            animate={{ opacity: 1, scale: 1 }}
+            transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1], delay: 0.1 }}
+            className="relative hidden items-center justify-center lg:flex lg:h-screen"
           >
-            {/* Fond dégradé jaune */}
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_76%_14%,rgba(255,244,209,0.85),rgba(255,255,255,0.6)_32%,rgba(255,255,255,0)_58%)]" />
-            <div className="absolute right-[-10%] top-[-4%] h-[82%] w-[88%] rounded-[44%] bg-[#FFF6DA]" />
-
-            {/* Décorations flottantes */}
-            <div className="absolute right-[12%] top-[6%] flex gap-5 opacity-75">
-              <span className="h-2 w-12 rounded-full bg-white/90" />
-              <span className="h-2 w-12 rounded-full bg-white/85" />
-              <span className="h-2 w-12 rounded-full bg-white/80" />
+            {/* Blob circulaire centré */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="h-[75%] w-[75%] rounded-full bg-[#FFF0BE]/60 blur-2xl" />
             </div>
 
-            {/* Cartes UI simulées */}
-            <div className="absolute left-[12%] top-[19%] max-w-[260px] rounded-[28px] bg-white/66 px-5 py-4 shadow-[0_12px_30px_rgba(0,0,0,0.05)] backdrop-blur">
-              <div className="mb-3 h-3 w-16 rounded-full bg-[#E6EDF5]" />
-              <div className="mb-2 h-4 w-32 rounded-md bg-[#E9EFF6]" />
-              <div className="h-3 w-44 rounded-full bg-[#EEF3F8]" />
-            </div>
-            <div className="absolute left-[15%] top-[33%] max-w-[320px] rounded-[28px] bg-white/52 px-5 py-5 shadow-[0_12px_30px_rgba(0,0,0,0.04)] backdrop-blur">
-              <div className="mb-3 h-3 w-28 rounded-full bg-[#E6EDF5]" />
-              <div className="mb-2 h-3 w-52 rounded-full bg-[#EEF3F8]" />
-              <div className="mb-2 h-3 w-56 rounded-full bg-[#EEF3F8]" />
-              <div className="h-3 w-44 rounded-full bg-[#EEF3F8]" />
-            </div>
-
-            {/* Illustration médicale */}
-            <div className="relative flex w-full items-center justify-center px-6 py-10 xl:px-10">
+            {/* Illustration médicale — centré, collé */}
+            <div className="relative z-10 flex h-full w-full items-end justify-center pb-0">
               <img
                 src="/doctors-cuate.svg"
                 alt="Illustration médicale Clinica"
-                className="relative z-10 w-full max-w-[620px] object-contain drop-shadow-sm"
+                className="h-[85%] w-auto max-w-full object-contain object-bottom"
               />
             </div>
           </motion.section>
