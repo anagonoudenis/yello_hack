@@ -1,9 +1,12 @@
 import { cn } from '@/lib/utils'
 
-type StatusVariant = 'solde' | 'attente' | 'partiel' | 'critique' | 'haute' | 'moyenne' | 'verrouille' | 'lecture'
+export type StatusVariant =
+  | 'solde' | 'attente' | 'partiel' | 'encaisse'
+  | 'critique' | 'haute' | 'moyenne'
+  | 'verrouille' | 'lecture'
 
 interface StatusBadgeProps {
-  variant: StatusVariant
+  variant: string   // string large — le fallback gère les valeurs inconnues
   className?: string
 }
 
@@ -11,6 +14,7 @@ const VARIANTS: Record<StatusVariant, { bg: string; text: string; dot: string; l
   solde:      { bg: '#F0FDF4', text: '#166534', dot: '#22C55E', label: 'Soldé' },
   attente:    { bg: '#FFFBEB', text: '#92400E', dot: '#F59E0B', label: 'En attente' },
   partiel:    { bg: '#EFF6FF', text: '#1E40AF', dot: '#3B82F6', label: 'Partiel' },
+  encaisse:   { bg: '#EFF6FF', text: '#1E40AF', dot: '#60A5FA', label: 'En caisse' },
   critique:   { bg: '#FEF2F2', text: '#991B1B', dot: '#EF4444', label: 'Critique' },
   haute:      { bg: '#FEF2F2', text: '#991B1B', dot: '#F97316', label: 'Haute' },
   moyenne:    { bg: '#FFFBEB', text: '#92400E', dot: '#F59E0B', label: 'Moyenne' },
@@ -18,8 +22,10 @@ const VARIANTS: Record<StatusVariant, { bg: string; text: string; dot: string; l
   lecture:    { bg: '#EFF6FF', text: '#1E40AF', dot: '#3B82F6', label: 'Lecture seule' },
 }
 
+const FALLBACK = { bg: '#F4F4F5', text: '#52525B', dot: '#A1A1AA', label: '—' }
+
 export function StatusBadge({ variant, className }: StatusBadgeProps) {
-  const v = VARIANTS[variant]
+  const v = VARIANTS[variant as StatusVariant] ?? FALLBACK
   return (
     <span
       className={cn('inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-semibold tracking-[0.06em] uppercase', className)}
