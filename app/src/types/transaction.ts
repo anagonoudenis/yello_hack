@@ -1,13 +1,22 @@
 import type { MobileMoneyOperator } from '@/lib/paymentOperators'
+import type { ProductCategory } from '@/types/catalogue'
+import type { HospitalizationChargeOrigin, HospitalizationChargeStatus } from '@/types/hospitalization'
 
 
 export type TransactionStatus = 'EN_ATTENTE' | 'ECHOUE' | 'SOLDE' | 'PARTIELLEMENT_SOLDE'
 export type PaymentMethod = 'ESPECES' | 'CHEQUE' | 'MOBILE_MONEY'
 export type PaymentStatus = 'EN_ATTENTE' | 'CONFIRME' | 'ECHOUE' | 'RECU' | 'ENCAISSE' | 'REJETE'
+export type TransactionSourceType = 'OUTPATIENT' | 'HOSPITALIZATION'
+export type TransactionKind = 'OUTPATIENT_SALE' | 'HOSPITALIZATION_INTERMEDIATE' | 'HOSPITALIZATION_FINAL'
+export type DossierType = 'EXTERNE' | 'HOSPITALISATION'
+export type DossierFinancialStatus = 'SOLDE' | 'NON_SOLDE' | 'TENTATIVE_NON_ABOUTIE'
 
 export interface TransactionLineRecord {
   id: number
   catalogueItemId: number
+  hospitalizationChargeId?: number | null
+  hospitalizationChargeOrigin?: HospitalizationChargeOrigin | null
+  hospitalizationChargeStatus?: HospitalizationChargeStatus | null
   codeElement: string
   nom: string
   type: string
@@ -50,6 +59,9 @@ export interface TransactionPaymentRecord {
 export interface TransactionRecord {
   id: number
   visitId: string
+  sourceType: TransactionSourceType
+  transactionKind: TransactionKind
+  hospitalizationCaseId: string | null
   patientNom: string
   patientTel: string
   caisseId: number | null
@@ -57,6 +69,9 @@ export interface TransactionRecord {
   statut: TransactionStatus
   montantTotalFcfa: number
   montantEncaisseFcfa: number
+  dossierTotalFcfa: number
+  dossierPaidFcfa: number
+  dossierRemainingFcfa: number
   invoiceNumber: string | null
   invoiceStatus: string | null
   canReopenInCashier: boolean
@@ -92,6 +107,10 @@ export interface TransactionListResponse {
 
 export interface TransactionDraftLine {
   catalogueItemId: number
+  hospitalizationChargeId?: number | null
+  hospitalizationChargeOrigin?: HospitalizationChargeOrigin | null
+  hospitalizationChargeStatus?: HospitalizationChargeStatus | null
+  isCashierDraft?: boolean
   codeElement: string
   nom: string
   type: string
@@ -101,12 +120,19 @@ export interface TransactionDraftLine {
   montantLigneFcfa: number
   payable: boolean
   motifNonHonore: string
+  stockManaged?: boolean
+  categorieProduit?: ProductCategory | null
+  quantiteStock?: number
+  dateExpiration?: string | null
 }
 
 export interface CreateTransactionPayload {
-  idVisite: string
+  idVisite?: string
+  hospitalizationCaseNumber?: string
+  transactionKind?: TransactionKind
   lines: Array<{
     catalogueItemId: number
+    hospitalizationChargeId?: number | null
     quantite: number
     payable: boolean
     motifNonHonore?: string
@@ -126,4 +152,58 @@ export interface CreateTransactionPayload {
         chequeBanque: string
         chequeTitulaire: string
       }
+}
+
+export interface DossierSummaryRecord {
+  dossierId: string
+  visitId: string
+  hospitalizationCaseId: string | null
+  patientNom: string
+  patientTel: string
+  dossierType: DossierType
+  statut: string
+  financialStatus: DossierFinancialStatus
+  montantTotalFcfa: number
+  montantTotalPayeFcfa: number
+  montantRestantFcfa: number
+  dernierEncaissementAt: string | null
+}
+
+export interface DossierChargeRecord {
+  id: number
+  codeReference: string
+  label: string
+  chargeType: string
+  origin: HospitalizationChargeOrigin | string
+  service: string | null
+  chargeDate: string | null
+  quantite: number
+  montantFcfa: number
+  statusReglement: string
+  transactionId: number | null
+}
+
+export interface NonDueAttemptLineRecord {
+  codeReference: string
+  label: string
+  quantite: number
+  montantFcfa: number
+}
+
+export interface NonDueAttemptRecord {
+  transactionId: number
+  paymentMethod: PaymentMethod
+  paymentStatus: PaymentStatus
+  createdAt: string
+  montantTenteFcfa: number
+  providerStatus: string | null
+  providerErrorCode: string | null
+  lines: NonDueAttemptLineRecord[]
+}
+
+export interface DossierDetailRecord extends DossierSummaryRecord {
+  prochainJalonAt: string | null
+  transactions: TransactionRecord[]
+  chargesNonReglees: DossierChargeRecord[]
+  nonDueAttempts: NonDueAttemptRecord[]
 }

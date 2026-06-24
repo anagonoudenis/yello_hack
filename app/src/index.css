@@ -10,7 +10,7 @@
 
   body {
     margin: 0;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Satoshi', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     background-color: #F4F4F5;
@@ -26,8 +26,8 @@
 }
 
 @theme inline {
-  --font-sans: 'Inter', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-sans: 'Satoshi', system-ui, sans-serif;
+  --font-mono: 'Satoshi', system-ui, sans-serif;
 
   /* Brand MTN */
   --color-brand-yellow: #FFCB00;

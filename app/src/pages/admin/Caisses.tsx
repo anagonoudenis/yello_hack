@@ -3,6 +3,7 @@ import { Layout } from '@/components/layout/Layout'
 import { PageHeader, Btn, StatCard } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/shared/DataTable'
+import { RowActionsMenu } from '@/components/shared/RowActionsMenu'
 import { createCaisse, deactivateCaisse, listCaisses, updateCaisse } from '@/services/caisseApi'
 import type { CaisseItem, CaissePayload } from '@/types/caisse'
 import { getApiErrorMessage } from '@/lib/apiError'
@@ -130,26 +131,12 @@ export default function Caisses() {
       label: '',
       align: 'right',
       render: (row) => (
-        <div className="flex justify-end gap-1">
-          <button
-            type="button"
-            onClick={() => openEdit(row)}
-            className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-            aria-label="Modifier la caisse"
-          >
-            <Edit2 size={13} />
-          </button>
-          {row.actif && (
-            <button
-              type="button"
-              onClick={() => void handleDeactivate(row)}
-              className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600"
-              aria-label="Desactiver la caisse"
-            >
-              <Power size={13} />
-            </button>
-          )}
-        </div>
+        <RowActionsMenu
+          actions={[
+            { label: 'Modifier', icon: Edit2, onSelect: () => { openEdit(row) } },
+            { label: 'Desactiver', icon: Power, tone: 'danger', hidden: !row.actif, onSelect: () => handleDeactivate(row) },
+          ]}
+        />
       ),
     },
   ], [])

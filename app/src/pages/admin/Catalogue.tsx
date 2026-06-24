@@ -1,19 +1,28 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { Layout } from '@/components/layout/Layout'
-import { PageHeader, Btn } from '@/components/layout/PageHeader'
-import { Card } from '@/components/ui/Card'
+import { Btn, PageHeader, StatCard } from '@/components/layout/PageHeader'
 import { DataTable, type Column } from '@/components/shared/DataTable'
+import { RowActionsMenu } from '@/components/shared/RowActionsMenu'
+import { Card } from '@/components/ui/Card'
 import { formatCFA } from '@/lib/formatCFA'
-import { cn } from '@/lib/utils'
+import { getApiErrorMessage } from '@/lib/apiError'
 import {
   createCatalogueItem,
   deactivateCatalogueItem,
+  deleteCatalogueItem,
   getCatalogueTariffHistory,
   listCatalogue,
   updateCatalogueItem,
 } from '@/services/catalogueApi'
-import type { CatalogueItem, CataloguePayload, CatalogueTariffHistory } from '@/types/catalogue'
-import { BookOpen, Edit2, FlaskConical, History, Loader2, Plus, Power, RefreshCw, Search, X } from 'lucide-react'
+import type { CatalogueItem, CataloguePayload, CatalogueTariffHistory, ProductCategory } from '@/types/catalogue'
+import { BookOpen, Edit2, FlaskConical, History, Loader2, Plus, Power, RefreshCw, Search, Trash2, X } from 'lucide-react'
+
+
+const CATEGORY_LABELS: Record<ProductCategory, string> = {
+  CONSOMMABLE_MEDICAL: 'Consommable medical',
+  DISPOSITIF_MEDICAL: 'Dispositif medical',
+  MEDICAMENT: 'Medicament',
+}
 
 const EMPTY_FORM: CataloguePayload = {
   codeElement: '',
@@ -23,15 +32,14 @@ const EMPTY_FORM: CataloguePayload = {
   service: 'Laboratoire',
   montantFcfa: 0,
   hopitalId: 'HSJ-229',
+  specialites: '',
+  formeGalenique: '',
+  classePharmacologique: '',
+  categorieProduit: null,
+  dateExpiration: null,
+  quantiteStock: 0,
   actif: true,
   metadata: {},
-}
-
-const TYPE_STYLE: Record<string, { bg: string; text: string }> = {
-  Analyse: { bg: 'bg-purple-50 text-purple-700 border border-purple-200', text: 'text-purple-700' },
-  Consultation: { bg: 'bg-blue-50 text-blue-700 border border-blue-200', text: 'text-blue-700' },
-  Medicament: { bg: 'bg-green-50 text-green-700 border border-green-200', text: 'text-green-700' },
-  Acte: { bg: 'bg-amber-50 text-amber-700 border border-amber-200', text: 'text-amber-700' },
 }
 
 function itemToForm(item: CatalogueItem): CataloguePayload {
@@ -43,6 +51,12 @@ function itemToForm(item: CatalogueItem): CataloguePayload {
     service: item.service,
     montantFcfa: item.montantFcfa,
     hopitalId: item.hopitalId,
+    specialites: item.specialites,
+    formeGalenique: item.formeGalenique,
+    classePharmacologique: item.classePharmacologique,
+    categorieProduit: item.categorieProduit,
+    dateExpiration: item.dateExpiration,
+    quantiteStock: item.quantiteStock,
     actif: item.actif,
     metadata: item.metadata,
   }
@@ -57,6 +71,8 @@ export default function Catalogue() {
   const [query, setQuery] = useState('')
   const [typeFilter, setTypeFilter] = useState('')
   const [serviceFilter, setServiceFilter] = useState('')
+  const [categoryFilter, setCategoryFilter] = useState<'all' | ProductCategory>('all')
+  const [stockFilter, setStockFilter] = useState<'all' | 'managed' | 'out' | 'expired'>('all')
   const [actifFilter, setActifFilter] = useState<'all' | 'active' | 'inactive'>('all')
   const [editing, setEditing] = useState<CatalogueItem | null>(null)
   const [form, setForm] = useState<CataloguePayload>(EMPTY_FORM)
@@ -70,29 +86,39 @@ export default function Catalogue() {
     setError('')
     try {
       const res = await listCatalogue({
-        search: query,
+        search: query || undefined,
         type: typeFilter || undefined,
         service: serviceFilter || undefined,
         actif: actifFilter === 'all' ? undefined : actifFilter === 'active',
+        categorieProduit: categoryFilter === 'all' ? undefined : categoryFilter,
+        stockManaged: stockFilter === 'managed' ? true : undefined,
+        outOfStock: stockFilter === 'out' ? true : undefined,
+        expired: stockFilter === 'expired' ? true : undefined,
         pageSize: 300,
       })
       setItems(res.items)
       setTotal(res.total)
-    } catch {
-      setError('Impossible de charger le catalogue. Verifiez que le backend est lance.')
+    } catch (loadError) {
+      setError(getApiErrorMessage(loadError, 'Impossible de charger le catalogue.'))
     } finally {
       setLoading(false)
     }
   }
 
   useEffect(() => {
-    const id = window.setTimeout(load, 250)
-    return () => window.clearTimeout(id)
-  }, [query, typeFilter, serviceFilter, actifFilter])
+    const timeoutId = window.setTimeout(() => {
+      void load()
+    }, 250)
+    return () => window.clearTimeout(timeoutId)
+  }, [query, typeFilter, serviceFilter, categoryFilter, stockFilter, actifFilter])
 
-  const types = useMemo(() => [...new Set(items.map((i) => i.type))].sort(), [items])
-  const services = useMemo(() => [...new Set(items.map((i) => i.service))].sort(), [items])
-  const activeCount = items.filter((i) => i.actif).length
+  const types = useMemo(() => [...new Set(items.map((item) => item.type))].sort(), [items])
+  const services = useMemo(() => [...new Set(items.map((item) => item.service))].sort(), [items])
+  const managedItems = items.filter((item) => item.stockManaged)
+  const ruptureCount = managedItems.filter((item) => item.quantiteStock <= 0).length
+  const expiredCount = managedItems.filter((item) => item.dateExpiration && new Date(item.dateExpiration) <= new Date()).length
+  const isAnalyseType = form.type.trim().toLowerCase() === 'analyse'
+  const isPharmaProduct = Boolean(form.categorieProduit)
 
   const openCreate = () => {
     setEditing(null)
@@ -119,6 +145,11 @@ export default function Catalogue() {
           service: form.service,
           montantFcfa: Number(form.montantFcfa),
           hopitalId: form.hopitalId,
+          specialites: form.specialites,
+          formeGalenique: form.formeGalenique,
+          classePharmacologique: form.classePharmacologique,
+          categorieProduit: form.categorieProduit,
+          dateExpiration: form.dateExpiration,
           actif: form.actif,
           metadata: form.metadata,
         })
@@ -126,24 +157,35 @@ export default function Catalogue() {
         await createCatalogueItem({
           ...form,
           montantFcfa: Number(form.montantFcfa),
+          quantiteStock: Number(form.quantiteStock ?? 0),
         })
       }
       setFormOpen(false)
       await load()
-    } catch {
-      setError('Enregistrement impossible. Verifiez les champs et vos droits admin.')
+    } catch (saveError) {
+      setError(getApiErrorMessage(saveError, 'Enregistrement impossible.'))
     } finally {
       setSaving(false)
     }
   }
 
-  const deactivate = async (item: CatalogueItem) => {
+  const handleDeactivate = async (item: CatalogueItem) => {
     setError('')
     try {
       await deactivateCatalogueItem(item.id)
       await load()
-    } catch {
-      setError('Desactivation impossible. Seul un admin peut modifier le catalogue.')
+    } catch (deactivateError) {
+      setError(getApiErrorMessage(deactivateError, 'Desactivation impossible.'))
+    }
+  }
+
+  const handleDelete = async (item: CatalogueItem) => {
+    setError('')
+    try {
+      await deleteCatalogueItem(item.id)
+      await load()
+    } catch (deleteError) {
+      setError(getApiErrorMessage(deleteError, 'Suppression physique impossible.'))
     }
   }
 
@@ -153,116 +195,135 @@ export default function Catalogue() {
     setHistoryLoading(true)
     try {
       setHistory(await getCatalogueTariffHistory(item.id))
-    } catch {
-      setError('Historique tarifaire indisponible.')
+    } catch (historyError) {
+      setError(getApiErrorMessage(historyError, 'Historique tarifaire indisponible.'))
     } finally {
       setHistoryLoading(false)
     }
   }
 
-  const cols: Column<CatalogueItem>[] = [
-    { key: 'codeElement', label: 'Code', render: (r) => (
-      <div>
-        <span className="font-mono text-[12px] font-semibold text-zinc-500 bg-zinc-100 px-2 py-0.5 rounded-lg">{r.codeElement}</span>
-        {r.codeLabo && <p className="text-[10px] text-zinc-300 mt-1">{r.codeLabo}</p>}
-      </div>
-    ) },
-    { key: 'nom', label: 'Acte / produit', render: (r) => <span className="text-[13px] font-semibold text-zinc-800">{r.nom}</span> },
-    { key: 'type', label: 'Categorie', render: (r) => {
-      const style = TYPE_STYLE[r.type] ?? TYPE_STYLE.Analyse
-      return <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${style.bg}`}><FlaskConical size={11} />{r.type}</span>
-    } },
-    { key: 'service', label: 'Service', render: (r) => <span className="text-[12px] text-zinc-500">{r.service}</span> },
-    { key: 'montantFcfa', label: 'Prix', align: 'right', sortable: true, render: (r) => <span className="font-mono font-bold text-[13px] text-zinc-900">{formatCFA(r.montantFcfa)}</span> },
-    { key: 'actif', label: 'Etat', render: (r) => (
-      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${r.actif ? 'bg-green-50 text-green-700 border border-green-200' : 'bg-zinc-100 text-zinc-400'}`}>
-        {r.actif ? 'Actif' : 'Inactif'}
-      </span>
-    ) },
-    { key: 'id', label: '', render: (r) => (
-      <div className="flex justify-end gap-1">
-        <button onClick={() => openHistory(r)} className="p-1.5 rounded-lg text-zinc-300 hover:text-zinc-700 hover:bg-zinc-100 transition-colors" aria-label="Historique">
-          <History size={13} />
-        </button>
-        <button onClick={() => openEdit(r)} className="p-1.5 rounded-lg text-zinc-300 hover:text-zinc-700 hover:bg-zinc-100 transition-colors" aria-label="Modifier">
-          <Edit2 size={13} />
-        </button>
-        {r.actif && (
-          <button onClick={() => deactivate(r)} className="p-1.5 rounded-lg text-zinc-300 hover:text-red-600 hover:bg-red-50 transition-colors" aria-label="Desactiver">
-            <Power size={13} />
-          </button>
-        )}
-      </div>
-    ) },
-  ]
+  const columns: Column<CatalogueItem>[] = useMemo(() => [
+    {
+      key: 'codeElement',
+      label: 'Code',
+      render: (row) => (
+        <span className="rounded-lg bg-zinc-100 px-2 py-0.5 font-mono text-[12px] font-semibold text-zinc-500">
+          {row.codeElement}
+        </span>
+      ),
+    },
+    {
+      key: 'nom',
+      label: 'Nom',
+      render: (row) => <span className="text-[13px] font-semibold text-zinc-800">{row.nom}</span>,
+    },
+    {
+      key: 'montantFcfa',
+      label: 'Prix',
+      align: 'right',
+      sortable: true,
+      render: (row) => <span className="font-mono text-[13px] font-bold text-zinc-900">{formatCFA(row.montantFcfa)}</span>,
+    },
+    {
+      key: 'actif',
+      label: 'Etat',
+      render: (row) => (
+        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${row.actif ? 'border border-green-200 bg-green-50 text-green-700' : 'bg-zinc-100 text-zinc-400'}`}>
+          {row.actif ? 'Actif' : 'Inactif'}
+        </span>
+      ),
+    },
+    {
+      key: 'id',
+      label: 'Actions',
+      align: 'right',
+      render: (row) => (
+        <RowActionsMenu
+          actions={[
+            { label: 'Historique tarifaire', icon: History, onSelect: () => openHistory(row) },
+            { label: 'Modifier', icon: Edit2, onSelect: () => { openEdit(row) } },
+            { label: 'Desactiver', icon: Power, tone: 'danger', hidden: !row.actif, onSelect: () => handleDeactivate(row) },
+            { label: 'Supprimer', icon: Trash2, tone: 'danger', onSelect: () => handleDelete(row) },
+          ]}
+        />
+      ),
+    },
+  ], [])
 
   return (
     <Layout>
       <PageHeader
-        title="Catalogue des actes"
-        subtitle={`${activeCount} actifs sur ${total} elements`}
-        actions={
+        title="Catalogue des actes et produits"
+        subtitle={`${items.filter((item) => item.actif).length} actifs sur ${total} elements`}
+        actions={(
           <>
-            <Btn variant="ghost" icon={RefreshCw} onClick={load} disabled={loading}>Actualiser</Btn>
-            <Btn variant="primary" icon={Plus} onClick={openCreate}>Nouvel acte</Btn>
+            <Btn variant="ghost" icon={RefreshCw} onClick={() => void load()} disabled={loading}>
+              Actualiser
+            </Btn>
+            <Btn variant="primary" icon={Plus} onClick={openCreate}>
+              Nouvel element
+            </Btn>
           </>
-        }
+        )}
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
-        <div className="bg-white rounded-2xl border border-zinc-200 p-5">
-          <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400 mb-2">Total</p>
-          <p className="font-black text-[32px] text-zinc-900 leading-none">{total}</p>
-          <p className="text-[12px] text-zinc-400 mt-1.5">elements</p>
-        </div>
-        {types.slice(0, 3).map((type) => {
-          const style = TYPE_STYLE[type] ?? TYPE_STYLE.Analyse
-          return (
-            <div key={type} className="bg-white rounded-2xl border border-zinc-200 p-5">
-              <div className="flex items-center gap-2 mb-2">
-                <BookOpen size={13} className={style.text} />
-                <p className="text-[11px] font-semibold uppercase tracking-widest text-zinc-400">{type}</p>
-              </div>
-              <p className="font-black text-[32px] text-zinc-900 leading-none">{items.filter((i) => i.type === type).length}</p>
-            </div>
-          )
-        })}
+      <div className="mb-6 grid gap-4 sm:grid-cols-4">
+        <StatCard label="Total" value={total} sub="elements catalogue" icon={BookOpen} accent />
+        <StatCard label="Stock gere" value={managedItems.length} sub="produits pharma" icon={FlaskConical} />
+        <StatCard label="Rupture" value={ruptureCount} sub="stock nul ou negatif" icon={Power} />
+        <StatCard label="Expires" value={expiredCount} sub="date depassee" icon={History} />
       </div>
 
       <Card padding="sm">
-        <div className="grid grid-cols-1 md:grid-cols-[1fr_160px_180px_150px] gap-3 mb-4">
+        <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-[1fr_150px_170px_190px_160px_150px]">
           <div className="relative">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
             <input
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Rechercher par nom, type ou service..."
-              className="w-full h-10 pl-9 pr-3 rounded-xl text-[14px] border border-zinc-200 bg-zinc-50 focus:border-[#FFCB00] outline-none transition-all"
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Rechercher par nom, type, service ou code..."
+              className="h-10 w-full rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-3 text-[14px] outline-none transition-all focus:border-[#FFCB00]"
             />
           </div>
-          <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)} className="h-10 px-3 rounded-xl text-[13px] border border-zinc-200 bg-white outline-none">
+          <select value={typeFilter} onChange={(event) => setTypeFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-[13px] outline-none">
             <option value="">Tous types</option>
             {types.map((type) => <option key={type} value={type}>{type}</option>)}
           </select>
-          <select value={serviceFilter} onChange={(e) => setServiceFilter(e.target.value)} className="h-10 px-3 rounded-xl text-[13px] border border-zinc-200 bg-white outline-none">
+          <select value={serviceFilter} onChange={(event) => setServiceFilter(event.target.value)} className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-[13px] outline-none">
             <option value="">Tous services</option>
             {services.map((service) => <option key={service} value={service}>{service}</option>)}
           </select>
-          <select value={actifFilter} onChange={(e) => setActifFilter(e.target.value as 'all' | 'active' | 'inactive')} className="h-10 px-3 rounded-xl text-[13px] border border-zinc-200 bg-white outline-none">
+          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as 'all' | ProductCategory)} className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-[13px] outline-none">
+            <option value="all">Toutes categories</option>
+            {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <select value={stockFilter} onChange={(event) => setStockFilter(event.target.value as 'all' | 'managed' | 'out' | 'expired')} className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-[13px] outline-none">
+            <option value="all">Tout stock</option>
+            <option value="managed">Stock gere</option>
+            <option value="out">Rupture</option>
+            <option value="expired">Expires</option>
+          </select>
+          <select value={actifFilter} onChange={(event) => setActifFilter(event.target.value as 'all' | 'active' | 'inactive')} className="h-10 rounded-xl border border-zinc-200 bg-white px-3 text-[13px] outline-none">
             <option value="all">Tous etats</option>
             <option value="active">Actifs</option>
             <option value="inactive">Inactifs</option>
           </select>
         </div>
 
-        {error && <p className="mb-3 text-[13px] text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">{error}</p>}
+        {error && (
+          <p className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-600">
+            {error}
+          </p>
+        )}
+
         {loading ? (
-          <div className="py-16 flex items-center justify-center gap-2 text-zinc-400 text-[13px]">
-            <Loader2 size={16} className="animate-spin" /> Chargement du catalogue...
+          <div className="flex items-center justify-center gap-2 py-16 text-[13px] text-zinc-400">
+            <Loader2 size={16} className="animate-spin" />
+            Chargement du catalogue...
           </div>
         ) : (
           <DataTable<CatalogueItem>
-            columns={cols}
+            columns={columns}
             data={items}
             searchable={false}
             emptyMessage="Aucun element dans le catalogue"
@@ -271,50 +332,111 @@ export default function Catalogue() {
       </Card>
 
       {formOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <form onSubmit={save} className="w-full max-w-2xl bg-white rounded-2xl border border-zinc-200 shadow-2xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <form onSubmit={save} className="w-full max-w-3xl overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
               <div>
                 <h2 className="text-[16px] font-bold text-zinc-900">{editing ? 'Modifier un element' : 'Nouvel element'}</h2>
-                <p className="text-[12px] text-zinc-400">Seul un admin peut changer les tarifs.</p>
+                <p className="text-[12px] text-zinc-400">
+                  Les tarifs restent admin-only. Les corrections de stock passent par la page stock.
+                </p>
               </div>
-              <button type="button" onClick={() => setFormOpen(false)} className="p-2 text-zinc-400 hover:text-zinc-700" aria-label="Fermer"><X size={16} /></button>
+              <button type="button" onClick={() => setFormOpen(false)} className="p-2 text-zinc-400 hover:text-zinc-700" aria-label="Fermer">
+                <X size={16} />
+              </button>
             </div>
-            <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+            <div className="grid grid-cols-1 gap-4 p-5 sm:grid-cols-2">
               <label className="text-[12px] font-semibold text-zinc-500">
                 Code element
-                <input value={form.codeElement} onChange={(e) => setForm({ ...form, codeElement: e.target.value })} disabled={!!editing} required className="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 text-[14px] disabled:bg-zinc-100" />
+                <input value={form.codeElement} onChange={(event) => setForm({ ...form, codeElement: event.target.value })} disabled={Boolean(editing)} required className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-[14px] disabled:bg-zinc-100" />
               </label>
-              <label className="text-[12px] font-semibold text-zinc-500">
-                Code labo
-                <input value={form.codeLabo ?? ''} onChange={(e) => setForm({ ...form, codeLabo: e.target.value })} className="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 text-[14px]" />
-              </label>
+              {isAnalyseType && (
+                <label className="text-[12px] font-semibold text-zinc-500">
+                  Code labo
+                  <input value={form.codeLabo ?? ''} onChange={(event) => setForm({ ...form, codeLabo: event.target.value })} className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-[14px]" />
+                </label>
+              )}
               <label className="text-[12px] font-semibold text-zinc-500 sm:col-span-2">
                 Libelle officiel
-                <input value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} required className="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 text-[14px]" />
+                <input value={form.nom} onChange={(event) => setForm({ ...form, nom: event.target.value })} required className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-[14px]" />
               </label>
               <label className="text-[12px] font-semibold text-zinc-500">
                 Type
-                <input value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value })} required className="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 text-[14px]" />
+                <input value={form.type} onChange={(event) => setForm({ ...form, type: event.target.value })} required className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-[14px]" />
               </label>
               <label className="text-[12px] font-semibold text-zinc-500">
                 Service
-                <input value={form.service} onChange={(e) => setForm({ ...form, service: e.target.value })} required className="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 text-[14px]" />
+                <input value={form.service} onChange={(event) => setForm({ ...form, service: event.target.value })} required className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-[14px]" />
+              </label>
+              <label className="text-[12px] font-semibold text-zinc-500">
+                Categorie produit
+                <select
+                  value={form.categorieProduit ?? ''}
+                  onChange={(event) => {
+                    const nextCategory = event.target.value ? event.target.value as ProductCategory : null
+                    setForm({
+                      ...form,
+                      categorieProduit: nextCategory,
+                      ...(nextCategory ? {} : {
+                        dateExpiration: null,
+                        specialites: '',
+                        formeGalenique: '',
+                        classePharmacologique: '',
+                        quantiteStock: editing ? form.quantiteStock : 0,
+                      }),
+                    })
+                  }}
+                  className="mt-1 h-10 w-full rounded-xl border border-zinc-200 bg-white px-3 text-[14px] outline-none"
+                >
+                  <option value="">Aucune</option>
+                  {Object.entries(CATEGORY_LABELS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </select>
               </label>
               <label className="text-[12px] font-semibold text-zinc-500">
                 Prix FCFA
-                <input type="number" min={0} value={form.montantFcfa} onChange={(e) => setForm({ ...form, montantFcfa: Number(e.target.value) })} required className="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 text-[14px] font-mono" />
+                <input type="number" min={0} value={form.montantFcfa} onChange={(event) => setForm({ ...form, montantFcfa: Number(event.target.value) })} required className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 font-mono text-[14px]" />
               </label>
-              <label className="text-[12px] font-semibold text-zinc-500">
-                Hopital
-                <input value={form.hopitalId} onChange={(e) => setForm({ ...form, hopitalId: e.target.value })} required className="mt-1 w-full h-10 px-3 rounded-xl border border-zinc-200 text-[14px]" />
-              </label>
-              <label className="sm:col-span-2 flex items-center gap-2 text-[13px] text-zinc-600">
-                <input type="checkbox" checked={form.actif} onChange={(e) => setForm({ ...form, actif: e.target.checked })} className="accent-[#FFCB00]" />
-                Element actif
-              </label>
+              {isPharmaProduct && (
+                <>
+                  <label className="text-[12px] font-semibold text-zinc-500">
+                    Date expiration
+                    <input type="date" value={form.dateExpiration ?? ''} onChange={(event) => setForm({ ...form, dateExpiration: event.target.value || null })} className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-[14px]" />
+                  </label>
+                  <label className="text-[12px] font-semibold text-zinc-500">
+                    {editing ? 'Stock courant' : 'Stock initial'}
+                    <input
+                      type="number"
+                      min={0}
+                      value={form.quantiteStock ?? 0}
+                      onChange={(event) => setForm({ ...form, quantiteStock: Number(event.target.value) })}
+                      disabled={Boolean(editing)}
+                      className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 font-mono text-[14px] disabled:bg-zinc-100"
+                    />
+                  </label>
+                  <label className="text-[12px] font-semibold text-zinc-500">
+                    Specialites
+                    <input value={form.specialites ?? ''} onChange={(event) => setForm({ ...form, specialites: event.target.value })} className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-[14px]" />
+                  </label>
+                  <label className="text-[12px] font-semibold text-zinc-500">
+                    Forme galenique
+                    <input value={form.formeGalenique ?? ''} onChange={(event) => setForm({ ...form, formeGalenique: event.target.value })} className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-[14px]" />
+                  </label>
+                  <label className="text-[12px] font-semibold text-zinc-500 sm:col-span-2">
+                    Classe pharmacologique
+                    <input value={form.classePharmacologique ?? ''} onChange={(event) => setForm({ ...form, classePharmacologique: event.target.value })} className="mt-1 h-10 w-full rounded-xl border border-zinc-200 px-3 text-[14px]" />
+                  </label>
+                </>
+              )}
+              {editing && (
+                <label className="sm:col-span-2 flex items-center gap-2 text-[13px] text-zinc-600">
+                  <input type="checkbox" checked={form.actif} onChange={(event) => setForm({ ...form, actif: event.target.checked })} className="accent-[#FFCB00]" />
+                  Element actif
+                </label>
+              )}
             </div>
-            <div className="px-5 py-4 bg-zinc-50 border-t border-zinc-100 flex justify-end gap-2">
+
+            <div className="flex justify-end gap-2 border-t border-zinc-100 bg-zinc-50 px-5 py-4">
               <Btn variant="ghost" onClick={() => setFormOpen(false)}>Annuler</Btn>
               <Btn variant="primary" type="submit" disabled={saving} icon={saving ? Loader2 : undefined}>
                 {saving ? 'Enregistrement...' : 'Enregistrer'}
@@ -325,14 +447,16 @@ export default function Catalogue() {
       )}
 
       {historyItem && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
-          <div className="w-full max-w-xl bg-white rounded-2xl border border-zinc-200 shadow-2xl overflow-hidden">
-            <div className="px-5 py-4 border-b border-zinc-100 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xl overflow-hidden rounded-2xl border border-zinc-200 bg-white">
+            <div className="flex items-center justify-between border-b border-zinc-100 px-5 py-4">
               <div>
                 <h2 className="text-[16px] font-bold text-zinc-900">Historique tarifaire</h2>
                 <p className="text-[12px] text-zinc-400">{historyItem.codeElement} - {historyItem.nom}</p>
               </div>
-              <button type="button" onClick={() => setHistoryItem(null)} className="p-2 text-zinc-400 hover:text-zinc-700" aria-label="Fermer"><X size={16} /></button>
+              <button type="button" onClick={() => setHistoryItem(null)} className="p-2 text-zinc-400 hover:text-zinc-700" aria-label="Fermer">
+                <X size={16} />
+              </button>
             </div>
             <div className="p-5">
               {historyLoading ? (
@@ -341,18 +465,22 @@ export default function Catalogue() {
                 <p className="text-[13px] text-zinc-400">Aucun changement de tarif enregistre.</p>
               ) : (
                 <div className="space-y-2">
-                  {history.map((h) => (
-                    <div key={h.id} className="p-3 rounded-xl border border-zinc-200 flex items-center justify-between gap-3">
+                  {history.map((entry) => (
+                    <div key={entry.id} className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 p-3">
                       <div>
                         <p className="text-[13px] font-semibold text-zinc-800">
-                          {formatCFA(h.ancienMontantFcfa)} {'->'} {formatCFA(h.nouveauMontantFcfa)}
+                          {formatCFA(entry.ancienMontantFcfa)} {'->'} {formatCFA(entry.nouveauMontantFcfa)}
                         </p>
                         <p className="text-[11px] text-zinc-400">
-                          {new Date(h.createdAt).toLocaleString('fr-FR')} par {h.auteurNom ?? 'Systeme'}
+                          {new Date(entry.createdAt).toLocaleString('fr-FR')} par {entry.auteurNom ?? 'Systeme'}
                         </p>
                       </div>
-                      <span className={cn('text-[11px] px-2 py-1 rounded-full', h.nouveauMontantFcfa > h.ancienMontantFcfa ? 'bg-amber-50 text-amber-700' : 'bg-green-50 text-green-700')}>
-                        {h.nouveauMontantFcfa > h.ancienMontantFcfa ? 'Hausse' : 'Baisse'}
+                      <span className={`rounded-full px-2 py-1 text-[11px] ${
+                        entry.nouveauMontantFcfa > entry.ancienMontantFcfa
+                          ? 'bg-amber-50 text-amber-700'
+                          : 'bg-green-50 text-green-700'
+                      }`}>
+                        {entry.nouveauMontantFcfa > entry.ancienMontantFcfa ? 'Hausse' : 'Baisse'}
                       </span>
                     </div>
                   ))}
