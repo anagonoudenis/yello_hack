@@ -108,7 +108,12 @@ export default function Encaissement() {
 
   const latestPayment = transaction?.latestPayment ?? null
   const editableFailedTransaction = transaction?.canReopenInCashier ?? false
-  const readOnlyMode = transaction !== null && !editableFailedTransaction
+  const isQueuedOffline =
+    latestPayment?.moyenPaiement === 'MOBILE_MONEY' &&
+    latestPayment.statut === 'EN_ATTENTE' &&
+    latestPayment.providerStatus === 'queued_offline'
+  // queued_offline = MoMo non transmis → on laisse changer de mode de paiement
+  const readOnlyMode = transaction !== null && !editableFailedTransaction && !isQueuedOffline
   const lockedWithoutTransaction = dossier !== null && transaction === null && isFinalVisitStatus(dossier.statut)
   const payableLines = lignes.filter((line) => line.payable)
   const nonPayableLines = lignes.filter((line) => !line.payable)
@@ -117,11 +122,7 @@ export default function Encaissement() {
   const montantNonHonore = nonPayableLines.reduce((sum, line) => sum + line.montantLigneFcfa, 0)
   const canSubmit = lignes.length > 0 && payableLines.length > 0 && nonPayableLines.every((line) => line.motifNonHonore.trim().length > 0)
   const dossierOperatorCode = dossier ? deduceOperatorFromPhone(dossier.patientTel) : null
-  const isPendingMobileMoney = latestPayment?.moyenPaiement === 'MOBILE_MONEY' && latestPayment.statut === 'EN_ATTENTE'
-  const isQueuedOffline =
-    latestPayment?.moyenPaiement === 'MOBILE_MONEY' &&
-    latestPayment.statut === 'EN_ATTENTE' &&
-    latestPayment.providerStatus === 'queued_offline'
+  const isPendingMobileMoney = latestPayment?.moyenPaiement === 'MOBILE_MONEY' && latestPayment.statut === 'EN_ATTENTE' && !isQueuedOffline
   const isFailedMobileMoney = editableFailedTransaction && latestPayment?.moyenPaiement === 'MOBILE_MONEY' && latestPayment.statut === 'ECHOUE'
   const paymentPhoneDefault =
     latestPayment?.moyenPaiement === 'MOBILE_MONEY' && editableFailedTransaction
@@ -484,9 +485,14 @@ export default function Encaissement() {
                 </span>
               </div>
 
-              {readOnlyMode && isQueuedOffline && (
-                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[13px] text-amber-700">
-                  En attente reseau - paiement Mobile Money non encore transmis. Le dossier reste en caisse jusqu'au retour de la connexion.
+              {isQueuedOffline && (
+                <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <p className="text-[13px] font-semibold text-amber-800 mb-1">
+                    ⚠ Mobile Money non transmis — réseau indisponible
+                  </p>
+                  <p className="text-[12px] text-amber-700 leading-relaxed">
+                    La demande MoMo n'a pas pu être envoyée au fournisseur. Vous pouvez utiliser un autre mode de paiement ci-dessous.
+                  </p>
                 </div>
               )}
 
