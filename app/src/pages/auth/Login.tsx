@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { ArrowRight, Eye, EyeOff, Loader2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { ArrowRight, Eye, EyeOff, Loader2, AlertCircle, WifiOff, ServerCrash, X } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import { cn } from '@/lib/utils'
 
@@ -17,10 +17,23 @@ export default function Login() {
   const [pwd,     setPwd]     = useState('')
   const [showPwd, setShowPwd] = useState(false)
   const [error,   setError]   = useState('')
+  const [shake,   setShake]   = useState(false)
   const [loading, setLoading] = useState(false)
   const ref = useRef<HTMLInputElement>(null)
 
   useEffect(() => { ref.current?.focus() }, [])
+
+  /* Détermine l'icône selon le type d'erreur */
+  const errorIcon = () => {
+    if (error.includes('connexion') || error.includes('serveur')) return <WifiOff size={16} />
+    if (error.includes('Erreur serveur')) return <ServerCrash size={16} />
+    return <AlertCircle size={16} />
+  }
+
+  const triggerShake = () => {
+    setShake(true)
+    setTimeout(() => setShake(false), 500)
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,6 +43,7 @@ export default function Login() {
     if (!result.ok) {
       setError(result.error ?? 'Identifiant ou mot de passe incorrect.')
       setLoading(false)
+      triggerShake()
     }
   }
 
@@ -78,17 +92,23 @@ export default function Login() {
                       className="mb-2 block text-[13px] font-medium text-zinc-700">
                       Identifiant
                     </label>
-                    <input
-                      ref={ref} id="id" type="text"
-                      value={id} onChange={(e) => setId(e.target.value)}
-                      autoComplete="username" placeholder="ex: admin"
-                      className={cn(
-                        'h-12 w-full rounded-2xl border bg-[#FBFBFC] px-4 text-[14px] outline-none transition-all placeholder:text-zinc-300',
-                        error
-                          ? 'border-red-300 bg-red-50/40'
-                          : 'border-zinc-200 focus:border-[#FFCB00] focus:bg-white focus:shadow-[0_0_0_4px_rgba(255,203,0,0.12)]'
-                      )}
-                    />
+                    <motion.div
+                      animate={shake ? { x: [0, -8, 8, -6, 6, -3, 3, 0] } : {}}
+                      transition={{ duration: 0.45 }}
+                    >
+                      <input
+                        ref={ref} id="id" type="text"
+                        value={id}
+                        onChange={(e) => { setId(e.target.value); if (error) setError('') }}
+                        autoComplete="username" placeholder="ex: admin"
+                        className={cn(
+                          'h-12 w-full rounded-2xl border px-4 text-[14px] outline-none transition-all placeholder:text-zinc-300',
+                          error
+                            ? 'border-red-300 bg-red-50/30 focus:border-red-400 focus:shadow-[0_0_0_3px_rgba(239,68,68,0.12)]'
+                            : 'border-zinc-200 bg-[#FBFBFC] focus:border-[#FFCB00] focus:bg-white focus:shadow-[0_0_0_4px_rgba(255,203,0,0.12)]'
+                        )}
+                      />
+                    </motion.div>
                   </div>
 
                   <div>
@@ -97,17 +117,23 @@ export default function Login() {
                       Mot de passe
                     </label>
                     <div className="relative">
-                      <input
-                        id="pwd" type={showPwd ? 'text' : 'password'}
-                        value={pwd} onChange={(e) => setPwd(e.target.value)}
-                        autoComplete="current-password" placeholder="••••••••"
-                        className={cn(
-                          'h-12 w-full rounded-2xl border bg-[#FBFBFC] pl-4 pr-11 text-[14px] outline-none transition-all placeholder:text-zinc-300',
-                          error
-                            ? 'border-red-300 bg-red-50/40'
-                            : 'border-zinc-200 focus:border-[#FFCB00] focus:bg-white focus:shadow-[0_0_0_4px_rgba(255,203,0,0.12)]'
-                        )}
-                      />
+                      <motion.div
+                        animate={shake ? { x: [0, -8, 8, -6, 6, -3, 3, 0] } : {}}
+                        transition={{ duration: 0.45 }}
+                      >
+                        <input
+                          id="pwd" type={showPwd ? 'text' : 'password'}
+                          value={pwd}
+                          onChange={(e) => { setPwd(e.target.value); if (error) setError('') }}
+                          autoComplete="current-password" placeholder="••••••••"
+                          className={cn(
+                            'h-12 w-full rounded-2xl border pl-4 pr-11 text-[14px] outline-none transition-all placeholder:text-zinc-300',
+                            error
+                              ? 'border-red-300 bg-red-50/30 focus:border-red-400 focus:shadow-[0_0_0_3px_rgba(239,68,68,0.12)]'
+                              : 'border-zinc-200 bg-[#FBFBFC] focus:border-[#FFCB00] focus:bg-white focus:shadow-[0_0_0_4px_rgba(255,203,0,0.12)]'
+                          )}
+                        />
+                      </motion.div>
                       <button
                         type="button"
                         onClick={() => setShowPwd((v) => !v)}
@@ -117,16 +143,40 @@ export default function Login() {
                         {showPwd ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
                     </div>
-                    {error && (
-                      <motion.p
-                        initial={{ opacity: 0, y: -4 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        className="mt-2 text-[12px] text-red-500"
-                      >
-                        {error}
-                      </motion.p>
-                    )}
                   </div>
+
+                  {/* ── Bannière d'erreur explicite ── */}
+                  <AnimatePresence>
+                    {error && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6, height: 0 }}
+                        animate={{ opacity: 1, y: 0, height: 'auto' }}
+                        exit={{ opacity: 0, y: -4, height: 0 }}
+                        transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3.5">
+                          <span className="mt-0.5 shrink-0 text-red-500">{errorIcon()}</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[13px] font-semibold text-red-700 leading-snug">
+                              Connexion échouée
+                            </p>
+                            <p className="text-[12px] text-red-500 mt-0.5 leading-snug">
+                              {error}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setError('')}
+                            aria-label="Fermer"
+                            className="shrink-0 text-red-300 hover:text-red-500 transition-colors mt-0.5"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
 
                   <button
                     type="submit"
