@@ -3,6 +3,7 @@ import { Layout } from '@/components/layout/Layout'
 import { PageHeader, Btn, StatCard } from '@/components/layout/PageHeader'
 import { Card } from '@/components/ui/Card'
 import { DataTable, type Column } from '@/components/shared/DataTable'
+import { RowActionsMenu } from '@/components/shared/RowActionsMenu'
 import { createAdminUser, deactivateAdminUser, listAdminUsers, updateAdminUser } from '@/services/adminUserApi'
 import { listCaisses } from '@/services/caisseApi'
 import type { AdminUser, AdminUserCreatePayload, AdminUserUpdatePayload } from '@/types/adminUser'
@@ -27,6 +28,7 @@ const ROLE_LABELS: Record<Role, string> = {
   caissier: 'Caissier',
   accueil: 'Accueil',
   auditeur: 'Auditeur',
+  recouvrement: 'Recouvrement',
 }
 
 const ROLE_STYLE: Record<Role, string> = {
@@ -35,6 +37,7 @@ const ROLE_STYLE: Record<Role, string> = {
   caissier: 'border border-green-200 bg-green-50 text-green-700',
   accueil: 'border border-blue-200 bg-blue-50 text-blue-700',
   auditeur: 'border border-zinc-200 bg-zinc-100 text-zinc-600',
+  recouvrement: 'border border-pink-200 bg-pink-50 text-pink-700',
 }
 
 const EMPTY_FORM: UserFormState = {
@@ -256,26 +259,12 @@ export default function Comptes() {
       label: '',
       align: 'right',
       render: (row) => (
-        <div className="flex justify-end gap-1">
-          <button
-            type="button"
-            onClick={() => openEdit(row)}
-            className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
-            aria-label="Modifier le compte"
-          >
-            <Edit2 size={13} />
-          </button>
-          {row.actif && (
-            <button
-              type="button"
-              onClick={() => void handleDeactivate(row)}
-              className="rounded-lg p-1.5 text-zinc-400 transition-colors hover:bg-red-50 hover:text-red-600"
-              aria-label="Desactiver le compte"
-            >
-              <Power size={13} />
-            </button>
-          )}
-        </div>
+        <RowActionsMenu
+          actions={[
+            { label: 'Modifier', icon: Edit2, onSelect: () => { openEdit(row) } },
+            { label: 'Desactiver', icon: Power, tone: 'danger', hidden: !row.actif, onSelect: () => handleDeactivate(row) },
+          ]}
+        />
       ),
     },
   ], [])

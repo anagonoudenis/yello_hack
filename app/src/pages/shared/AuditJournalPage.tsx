@@ -62,6 +62,7 @@ export function AuditJournalPage({ role }: { role: 'auditeur' | 'admin' }) {
           <option value="caissier">Caissier</option>
           <option value="accueil">Accueil</option>
           <option value="auditeur">Auditeur</option>
+          <option value="recouvrement">Recouvrement</option>
         </select>
         <button onClick={() => void handleExport('csv')} className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 px-3 py-2 text-[13px] font-semibold text-zinc-700"><Download size={14} /> CSV</button>
         <button onClick={() => void handleExport('xlsx')} className="inline-flex items-center gap-2 rounded-xl border border-zinc-200 px-3 py-2 text-[13px] font-semibold text-zinc-700"><Download size={14} /> XLSX</button>

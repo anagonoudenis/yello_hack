@@ -7,4 +7,5 @@ export const ROLE_HOME_ROUTES: Record<Role, string> = {
   accueil: '/accueil/enregistrement',
   admin: '/admin/catalogue',
   auditeur: '/auditeur/releve',
+  recouvrement: '/recouvrement/sejours',
 }

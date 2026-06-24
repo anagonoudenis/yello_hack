@@ -6,7 +6,9 @@ interface AuthContextValue {
   isAuthenticated: boolean
   role: Role | null
   nom: string | null
+  identifiant: string | null
   initiales: string | null
+  caisseId: number | null
   caisse: string | null
 }
 
@@ -21,7 +23,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isAuthenticated,
       role: user?.role ?? null,
       nom: user?.nom ?? null,
+      identifiant: user?.identifiant ?? null,
       initiales: user?.initiales ?? null,
+      caisseId: user?.caisseId ?? null,
       caisse: user?.caisse ?? null,
     }}>
       {children}

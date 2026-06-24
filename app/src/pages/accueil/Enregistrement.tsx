@@ -14,7 +14,7 @@ import { Layout } from '@/components/layout/Layout'
 import { VisitConfirmation } from '@/components/shared/VisitConfirmation'
 import { cn } from '@/lib/utils'
 import { formatDate } from '@/lib/formatDate'
-import { createVisit, listVisits } from '@/services/visitApi'
+import { createVisit, duplicateCheckVisits } from '@/services/visitApi'
 import type { VisitRecord } from '@/types/visit'
 
 const SERVICES = [
@@ -47,7 +47,7 @@ const SERVICE_COLOR: Record<string, { active: string }> = {
   purple: { active: 'border-purple-400 bg-purple-50' },
 }
 
-type PhoneStatus = 'idle' | 'checking' | 'ok' | 'doublon'
+type DuplicateStatus = 'idle' | 'checking' | 'ok' | 'doublon'
 
 function Field({
   id,
@@ -88,60 +88,69 @@ function Field({
 
 function formatPreviewPhone(value: string) {
   const digits = value.replace(/\D/g, '')
-  if (digits.length === 8) return `+229 ${value}`
-  return value || '—'
+  if (digits.length === 8 || digits.length === 10) return `+229 ${value}`
+  return value || '-'
 }
 
 export default function Enregistrement() {
   const [nom, setNom] = useState('')
   const [prenom, setPrenom] = useState('')
   const [tel, setTel] = useState('')
+  const [contactUrgenceTel, setContactUrgenceTel] = useState('')
   const [motif, setMotif] = useState('')
   const [service, setService] = useState('')
-  const [phoneStatus, setPhoneStatus] = useState<PhoneStatus>('idle')
-  const [phoneLookupError, setPhoneLookupError] = useState('')
+  const [parcoursType, setParcoursType] = useState<'EXTERNE' | 'HOSPITALISATION'>('EXTERNE')
+  const [duplicateStatus, setDuplicateStatus] = useState<DuplicateStatus>('idle')
+  const [duplicateLookupError, setDuplicateLookupError] = useState('')
   const [duplicates, setDuplicates] = useState<VisitRecord[]>([])
   const [loading, setLoading] = useState(false)
   const [submitError, setSubmitError] = useState('')
   const [confirmed, setConfirmed] = useState<VisitRecord | null>(null)
 
   const phoneDigits = tel.replace(/\D/g, '')
+  const shouldCheckDuplicates =
+    phoneDigits.length >= 8 || (nom.trim().length > 1 && prenom.trim().length > 1)
 
   useEffect(() => {
-    if (phoneDigits.length < 8) {
-      setPhoneStatus('idle')
-      setPhoneLookupError('')
+    if (!shouldCheckDuplicates) {
+      setDuplicateStatus('idle')
+      setDuplicateLookupError('')
       setDuplicates([])
       return
     }
 
     const timeoutId = window.setTimeout(async () => {
-      setPhoneStatus('checking')
-      setPhoneLookupError('')
+      setDuplicateStatus('checking')
+      setDuplicateLookupError('')
       try {
-        const res = await listVisits({ telephoneExact: tel, pageSize: 5 })
-        setDuplicates(res.items)
-        setPhoneStatus(res.items.length > 0 ? 'doublon' : 'ok')
+        const items = await duplicateCheckVisits({
+          patientNom: nom.trim(),
+          patientPrenom: prenom.trim(),
+          patientTel: tel,
+        })
+        setDuplicates(items)
+        setDuplicateStatus(items.length > 0 ? 'doublon' : 'ok')
       } catch {
         setDuplicates([])
-        setPhoneStatus('idle')
-        setPhoneLookupError('Verification du numero indisponible pour le moment.')
+        setDuplicateStatus('idle')
+        setDuplicateLookupError('Verification des doublons indisponible pour le moment.')
       }
     }, 350)
 
     return () => window.clearTimeout(timeoutId)
-  }, [tel, phoneDigits.length])
+  }, [nom, prenom, tel, shouldCheckDuplicates])
 
   const contactDone =
     phoneDigits.length >= 8 &&
-    phoneStatus !== 'checking' &&
-    (phoneStatus === 'ok' || phoneStatus === 'doublon' || phoneLookupError.length > 0)
+    duplicateStatus !== 'checking' &&
+    (duplicateStatus === 'ok' || duplicateStatus === 'doublon' || duplicateLookupError.length > 0)
 
   const steps = [
     { label: 'Identite', done: !!(nom && prenom) },
     { label: 'Contact', done: contactDone },
     { label: 'Motif', done: !!motif },
     { label: 'Service', done: !!service },
+    { label: 'Parcours', done: !!parcoursType },
   ]
   const currentStep = steps.findIndex((item) => !item.done)
   const valid = steps.every((item) => item.done)
@@ -157,10 +166,12 @@ export default function Enregistrement() {
     setNom('')
     setPrenom('')
     setTel('')
+    setContactUrgenceTel('')
     setMotif('')
     setService('')
-    setPhoneStatus('idle')
-    setPhoneLookupError('')
+    setParcoursType('EXTERNE')
+    setDuplicateStatus('idle')
+    setDuplicateLookupError('')
     setDuplicates([])
     setSubmitError('')
   }
@@ -175,8 +186,10 @@ export default function Enregistrement() {
         patientNom: nom,
         patientPrenom: prenom,
         patientTel: tel,
+        contactUrgenceTel,
         motifVisite: motif,
         serviceOriente: service,
+        parcoursType,
       })
       setConfirmed(visit)
     } catch {
@@ -285,93 +298,116 @@ export default function Enregistrement() {
                 </span>
                 Contact
               </p>
-              <Field id="tel" label="Telephone *" icon={Phone}>
-                <div className="flex gap-2">
-                  <div className="flex h-10 shrink-0 items-center rounded-lg border border-zinc-200 bg-zinc-100 px-3">
-                    <span className="font-mono text-[13px] font-semibold text-zinc-600">+229</span>
+              <div className="space-y-4">
+                <Field id="tel" label="Telephone *" icon={Phone}>
+                  <div className="flex gap-2">
+                    <div className="flex h-10 shrink-0 items-center rounded-lg border border-zinc-200 bg-zinc-100 px-3">
+                      <span className="font-mono text-[13px] font-semibold text-zinc-600">+229</span>
+                    </div>
+                    <div className="relative flex-1">
+                      <input
+                        id="tel"
+                        value={tel}
+                        onChange={(e) => setTel(e.target.value)}
+                        placeholder="97 12 34 56"
+                        className={inputClass(
+                          cn(
+                            'pr-10',
+                            duplicateStatus === 'ok' && 'border-green-400 bg-green-50/30',
+                            duplicateStatus === 'doublon' && 'border-amber-400 bg-amber-50/20',
+                            duplicateStatus === 'idle' &&
+                              'border-zinc-200 focus:border-[#FFCB00] focus:shadow-[0_0_0_3px_rgba(255,203,0,0.12)]'
+                          )
+                        )}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                        {duplicateStatus === 'checking' && (
+                          <Loader2 size={14} className="animate-spin text-zinc-400" />
+                        )}
+                        {duplicateStatus === 'ok' && <CheckCircle size={14} className="text-green-500" />}
+                        {duplicateStatus === 'doublon' && <AlertCircle size={14} className="text-amber-500" />}
+                      </span>
+                    </div>
                   </div>
-                  <div className="relative flex-1">
+
+                  <AnimatePresence mode="wait">
+                    {duplicateStatus === 'ok' && (
+                      <motion.p
+                        key="duplicate-ok"
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="mt-1.5 flex items-center gap-1 text-[12px] font-semibold text-green-600"
+                      >
+                        <CheckCircle size={11} />
+                        Aucun doublon detecte sur le numero ou l'identite.
+                      </motion.p>
+                    )}
+                    {duplicateStatus === 'doublon' && (
+                      <motion.div
+                        key="duplicate-warning"
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="mt-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3"
+                      >
+                        <p className="flex items-center gap-1 text-[12px] font-semibold text-amber-700">
+                          <AlertCircle size={11} />
+                          Des dossiers similaires existent deja. Verification conseillee avant creation.
+                        </p>
+                        <div className="mt-2 space-y-2">
+                          {duplicates.slice(0, 3).map((item) => (
+                            <div
+                              key={item.idVisite}
+                              className="rounded-lg border border-amber-100 bg-white/70 px-3 py-2"
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <p className="text-[12px] font-semibold text-zinc-800">
+                                  {item.patientNomComplet}
+                                </p>
+                                <span className="font-mono text-[11px] font-bold text-amber-700">
+                                  {item.idVisite}
+                                </span>
+                              </div>
+                              <p className="mt-0.5 text-[11px] text-zinc-500">
+                                {item.serviceOriente} - {formatDate(item.createdAt)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </motion.div>
+                    )}
+                    {duplicateLookupError && (
+                      <motion.p
+                        key="duplicate-error"
+                        initial={{ opacity: 0, y: -4 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0 }}
+                        className="mt-1.5 text-[12px] font-medium text-zinc-500"
+                      >
+                        {duplicateLookupError}
+                      </motion.p>
+                    )}
+                  </AnimatePresence>
+                </Field>
+
+                <Field id="contact-urgence" label="Contact d'urgence" icon={Phone}>
+                  <div className="flex gap-2">
+                    <div className="flex h-10 shrink-0 items-center rounded-lg border border-zinc-200 bg-zinc-100 px-3">
+                      <span className="font-mono text-[13px] font-semibold text-zinc-600">+229</span>
+                    </div>
                     <input
-                      id="tel"
-                      value={tel}
-                      onChange={(e) => setTel(e.target.value)}
-                      placeholder="97 12 34 56"
+                      id="contact-urgence"
+                      value={contactUrgenceTel}
+                      onChange={(e) => setContactUrgenceTel(e.target.value)}
+                      placeholder="01 90 11 22 33"
                       className={inputClass(
-                        cn(
-                          'pr-10',
-                          phoneStatus === 'ok' && 'border-green-400 bg-green-50/30',
-                          phoneStatus === 'doublon' && 'border-amber-400 bg-amber-50/20',
-                          phoneStatus === 'idle' &&
-                            'border-zinc-200 focus:border-[#FFCB00] focus:shadow-[0_0_0_3px_rgba(255,203,0,0.12)]'
-                        )
+                        'border-zinc-200 focus:border-[#FFCB00] focus:shadow-[0_0_0_3px_rgba(255,203,0,0.12)]'
                       )}
                     />
-                    <span className="absolute right-3 top-1/2 -translate-y-1/2">
-                      {phoneStatus === 'checking' && <Loader2 size={14} className="animate-spin text-zinc-400" />}
-                      {phoneStatus === 'ok' && <CheckCircle size={14} className="text-green-500" />}
-                      {phoneStatus === 'doublon' && <AlertCircle size={14} className="text-amber-500" />}
-                    </span>
                   </div>
-                </div>
-
-                <AnimatePresence mode="wait">
-                  {phoneStatus === 'ok' && (
-                    <motion.p
-                      key="phone-ok"
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="mt-1.5 flex items-center gap-1 text-[12px] font-semibold text-green-600"
-                    >
-                      <CheckCircle size={11} />
-                      Aucun doublon detecte.
-                    </motion.p>
-                  )}
-                  {phoneStatus === 'doublon' && (
-                    <motion.div
-                      key="phone-duplicate"
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="mt-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3"
-                    >
-                      <p className="flex items-center gap-1 text-[12px] font-semibold text-amber-700">
-                        <AlertCircle size={11} />
-                        Numero deja enregistre. Verification conseillee avant creation.
-                      </p>
-                      <div className="mt-2 space-y-2">
-                        {duplicates.slice(0, 3).map((item) => (
-                          <div
-                            key={item.idVisite}
-                            className="rounded-lg border border-amber-100 bg-white/70 px-3 py-2"
-                          >
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-[12px] font-semibold text-zinc-800">{item.patientNomComplet}</p>
-                              <span className="font-mono text-[11px] font-bold text-amber-700">
-                                {item.idVisite}
-                              </span>
-                            </div>
-                            <p className="mt-0.5 text-[11px] text-zinc-500">
-                              {item.serviceOriente} · {formatDate(item.createdAt)}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
-                    </motion.div>
-                  )}
-                  {phoneLookupError && (
-                    <motion.p
-                      key="phone-error"
-                      initial={{ opacity: 0, y: -4 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0 }}
-                      className="mt-1.5 text-[12px] font-medium text-zinc-500"
-                    >
-                      {phoneLookupError}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-              </Field>
+                </Field>
+              </div>
             </div>
 
             <div>
@@ -437,7 +473,9 @@ export default function Enregistrement() {
                           : 'border-zinc-200 bg-white hover:border-zinc-300 hover:bg-zinc-50'
                       )}
                     >
-                      {active && <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-green-500" />}
+                      {active && (
+                        <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-green-500" />
+                      )}
                       <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-black text-zinc-500">
                         {item.badge}
                       </span>
@@ -449,6 +487,38 @@ export default function Enregistrement() {
                       >
                         {item.label}
                       </span>
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-zinc-300">
+                <span className="flex h-5 w-5 items-center justify-center rounded-full bg-zinc-100 text-[9px] font-black text-zinc-400">
+                  5
+                </span>
+                Parcours
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { value: 'EXTERNE', label: 'Externe' },
+                  { value: 'HOSPITALISATION', label: 'Hospitalisation' },
+                ].map((item) => {
+                  const active = parcoursType === item.value
+                  return (
+                    <button
+                      key={item.value}
+                      type="button"
+                      onClick={() => setParcoursType(item.value as 'EXTERNE' | 'HOSPITALISATION')}
+                      className={cn(
+                        'rounded-lg border px-3 py-3 text-left text-[13px] transition-all duration-100',
+                        active
+                          ? 'border-[#FFCB00] bg-[#FFFAE6] font-semibold text-zinc-900'
+                          : 'border-zinc-200 bg-white text-zinc-500 hover:border-zinc-300 hover:bg-zinc-50'
+                      )}
+                    >
+                      {item.label}
                     </button>
                   )
                 })}
@@ -479,7 +549,7 @@ export default function Enregistrement() {
                     Creer le dossier
                   </>
                 ) : (
-                  <>Completez tous les champs ({steps.filter((item) => item.done).length}/4)</>
+                  <>Completez tous les champs ({steps.filter((item) => item.done).length}/{steps.length})</>
                 )}
               </button>
             </div>
@@ -550,11 +620,14 @@ export default function Enregistrement() {
                   </div>
                   <div>
                     <p className="text-[14px] font-bold text-zinc-900">
-                      {[prenom, nom].filter(Boolean).join(' ') || '—'}
+                      {[prenom, nom].filter(Boolean).join(' ') || '-'}
                     </p>
-                    <p className="font-mono text-[12px] text-zinc-400">
-                      {tel ? formatPreviewPhone(tel) : '—'}
-                    </p>
+                    <p className="font-mono text-[12px] text-zinc-400">{tel ? formatPreviewPhone(tel) : '-'}</p>
+                    {contactUrgenceTel && (
+                      <p className="font-mono text-[11px] text-zinc-400">
+                        Urgence: {formatPreviewPhone(contactUrgenceTel)}
+                      </p>
+                    )}
                   </div>
                 </div>
                 {motif && (
@@ -569,6 +642,9 @@ export default function Enregistrement() {
                     <span>{service}</span>
                   </div>
                 )}
+                <div className="mt-2 inline-flex rounded-full border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-[11px] font-semibold text-zinc-600">
+                  {parcoursType === 'HOSPITALISATION' ? 'Parcours hospitalisation' : 'Parcours externe'}
+                </div>
               </motion.div>
             )}
           </AnimatePresence>
@@ -578,8 +654,7 @@ export default function Enregistrement() {
               A communiquer
             </p>
             <p className="text-[12px] leading-relaxed text-amber-700">
-              Le numero de dossier <span className="font-bold">VIS-XXXX</span> genere sera communique
-              au patient avant son passage en caisse.
+              Chaque nouveau passage genere un nouveau numero de dossier VIS-XXXX avant le passage en caisse.
             </p>
           </div>
         </div>

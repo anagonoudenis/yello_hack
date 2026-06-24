@@ -42,10 +42,10 @@ export function StatCard({ label, value, sub, accent, icon: Icon }: {
   )
 }
 
-export function Btn({ children, variant = 'primary', icon: Icon, onClick, disabled, type = 'button', className }: {
+export function Btn({ children, variant = 'primary', icon: Icon, onClick, disabled, type = 'button', className, form }: {
   children: ReactNode; variant?: 'primary' | 'secondary' | 'ghost' | 'danger'
   icon?: React.ElementType; onClick?: () => void; disabled?: boolean
-  type?: 'button' | 'submit'; className?: string
+  type?: 'button' | 'submit'; className?: string; form?: string
 }) {
   const base = 'inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl text-[13px] font-semibold transition-all duration-100 disabled:opacity-40 disabled:cursor-not-allowed'
   const variants = {
@@ -55,7 +55,7 @@ export function Btn({ children, variant = 'primary', icon: Icon, onClick, disabl
     danger:    'bg-red-50 hover:bg-red-100 text-red-700 border border-red-200',
   }
   return (
-    <button type={type} onClick={onClick} disabled={disabled} className={cn(base, variants[variant], className)}>
+    <button type={type} form={form} onClick={onClick} disabled={disabled} className={cn(base, variants[variant], className)}>
       {Icon && <Icon size={14} />}
       {children}
     </button>

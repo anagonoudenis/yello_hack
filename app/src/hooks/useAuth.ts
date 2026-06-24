@@ -1,7 +1,7 @@
-import axios from 'axios'
 import { useNavigate } from 'react-router-dom'
 import useAuthStore from '@/store/authStore'
 import api from '@/services/api'
+import { getApiErrorMessage } from '@/lib/apiError'
 import { ROLE_HOME_ROUTES } from '@/lib/roleRoutes'
 import type { Role } from '@/lib/constants'
 
@@ -54,29 +54,10 @@ export function useAuth() {
     } catch (error) {
       localStorage.removeItem('access_token')
       logout()
-
-      // Messages d'erreur précis selon le contexte
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status
-        const detail = error.response?.data?.detail
-        if (status === 401 || status === 403) {
-          return { ok: false, error: 'Identifiant ou mot de passe incorrect.' }
-        }
-        if (status === 422) {
-          return { ok: false, error: 'Données de connexion invalides. Vérifiez les champs.' }
-        }
-        if (status && status >= 500) {
-          return { ok: false, error: 'Erreur serveur. Réessayez dans quelques instants.' }
-        }
-        if (!error.response) {
-          return { ok: false, error: 'Impossible de joindre le serveur. Vérifiez votre connexion.' }
-        }
-        if (typeof detail === 'string' && detail.trim()) {
-          return { ok: false, error: detail }
-        }
+      return {
+        ok: false,
+        error: getApiErrorMessage(error, 'Identifiant ou mot de passe incorrect.'),
       }
-
-      return { ok: false, error: 'Une erreur inattendue est survenue. Réessayez.' }
     }
   }
 

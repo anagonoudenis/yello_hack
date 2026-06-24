@@ -1,6 +1,9 @@
 import api from '@/services/api'
 import type {
   CreateTransactionPayload,
+  DossierChargeRecord,
+  DossierDetailRecord,
+  DossierSummaryRecord,
   TransactionListParams,
   TransactionListResponse,
   TransactionRecord,
@@ -9,7 +12,10 @@ import type {
 
 interface ApiTransactionLine {
   id: number
-  catalogue_item_id: number
+  catalogue_item_id: number | null
+  hospitalization_charge_id?: number | null
+  hospitalization_charge_origin?: TransactionRecord['lines'][number]['hospitalizationChargeOrigin']
+  hospitalization_charge_status?: TransactionRecord['lines'][number]['hospitalizationChargeStatus']
   code_element_snapshot: string
   nom_snapshot: string
   type_snapshot: string
@@ -52,6 +58,9 @@ interface ApiTransactionPayment {
 interface ApiTransactionRecord {
   id: number
   id_visite: string
+  source_type: TransactionRecord['sourceType']
+  transaction_kind: TransactionRecord['transactionKind']
+  hospitalization_case_id: string | null
   patient_nom: string
   patient_tel: string
   caisse_id: number | null
@@ -59,6 +68,9 @@ interface ApiTransactionRecord {
   statut: TransactionRecord['statut']
   montant_total_fcfa: number
   montant_encaisse_fcfa: number
+  dossier_total_fcfa: number
+  dossier_paid_fcfa: number
+  dossier_remaining_fcfa: number
   invoice_number: string | null
   invoice_status: string | null
   can_reopen_in_cashier: boolean
@@ -67,6 +79,65 @@ interface ApiTransactionRecord {
   updated_at: string
   lines: ApiTransactionLine[]
   payment: ApiTransactionPayment
+}
+
+interface ApiDossierSummary {
+  dossier_id: string
+  visit_id: string
+  hospitalization_case_id: string | null
+  patient_nom: string
+  patient_tel: string
+  dossier_type: DossierSummaryRecord['dossierType']
+  statut: string
+  financial_status: DossierSummaryRecord['financialStatus']
+  montant_total_fcfa: number
+  montant_total_paye_fcfa: number
+  montant_restant_fcfa: number
+  dernier_encaissement_at: string | null
+}
+
+interface ApiDossierCharge {
+  id: number
+  code_reference: string
+  label: string
+  charge_type: string
+  origin: DossierChargeRecord['origin']
+  service: string | null
+  charge_date: string | null
+  quantite: number
+  montant_fcfa: number
+  status_reglement: string
+  transaction_id: number | null
+}
+
+interface ApiNonDueAttemptLine {
+  code_reference: string
+  label: string
+  quantite: number
+  montant_fcfa: number
+}
+
+interface ApiNonDueAttempt {
+  transaction_id: number
+  payment_method: TransactionRecord['latestPayment']['moyenPaiement']
+  payment_status: TransactionRecord['latestPayment']['statut']
+  created_at: string
+  montant_tente_fcfa: number
+  provider_status: string | null
+  provider_error_code: string | null
+  lines: ApiNonDueAttemptLine[]
+}
+
+interface ApiDossierDetail extends ApiDossierSummary {
+  prochain_jalon_at: string | null
+  transactions: ApiTransactionRecord[]
+  charges_non_reglees: ApiDossierCharge[]
+  non_due_attempts: ApiNonDueAttempt[]
+}
+
+interface ApiDossierListResponse {
+  items: ApiDossierSummary[]
+  total: number
 }
 
 interface ApiTransactionListResponse {
@@ -83,6 +154,9 @@ interface ApiTransactionListResponse {
 const toTransaction = (item: ApiTransactionRecord): TransactionRecord => ({
   id: item.id,
   visitId: item.id_visite,
+  sourceType: item.source_type,
+  transactionKind: item.transaction_kind,
+  hospitalizationCaseId: item.hospitalization_case_id,
   patientNom: item.patient_nom,
   patientTel: item.patient_tel,
   caisseId: item.caisse_id,
@@ -90,6 +164,9 @@ const toTransaction = (item: ApiTransactionRecord): TransactionRecord => ({
   statut: item.statut,
   montantTotalFcfa: item.montant_total_fcfa,
   montantEncaisseFcfa: item.montant_encaisse_fcfa,
+  dossierTotalFcfa: item.dossier_total_fcfa,
+  dossierPaidFcfa: item.dossier_paid_fcfa,
+  dossierRemainingFcfa: item.dossier_remaining_fcfa,
   invoiceNumber: item.invoice_number,
   invoiceStatus: item.invoice_status,
   canReopenInCashier: item.can_reopen_in_cashier,
@@ -98,7 +175,10 @@ const toTransaction = (item: ApiTransactionRecord): TransactionRecord => ({
   updatedAt: item.updated_at,
   lines: item.lines.map((line) => ({
     id: line.id,
-    catalogueItemId: line.catalogue_item_id,
+    catalogueItemId: line.catalogue_item_id ?? -(line.hospitalization_charge_id ?? line.id),
+    hospitalizationChargeId: line.hospitalization_charge_id ?? null,
+    hospitalizationChargeOrigin: line.hospitalization_charge_origin ?? null,
+    hospitalizationChargeStatus: line.hospitalization_charge_status ?? null,
     codeElement: line.code_element_snapshot,
     nom: line.nom_snapshot,
     type: line.type_snapshot,
@@ -136,6 +216,59 @@ const toTransaction = (item: ApiTransactionRecord): TransactionRecord => ({
     confirmedAt: item.payment.confirmed_at,
     failedAt: item.payment.failed_at,
   },
+})
+
+const toDossierSummary = (item: ApiDossierSummary): DossierSummaryRecord => ({
+  dossierId: item.dossier_id,
+  visitId: item.visit_id,
+  hospitalizationCaseId: item.hospitalization_case_id,
+  patientNom: item.patient_nom,
+  patientTel: item.patient_tel,
+  dossierType: item.dossier_type,
+  statut: item.statut,
+  financialStatus: item.financial_status,
+  montantTotalFcfa: item.montant_total_fcfa,
+  montantTotalPayeFcfa: item.montant_total_paye_fcfa,
+  montantRestantFcfa: item.montant_restant_fcfa,
+  dernierEncaissementAt: item.dernier_encaissement_at,
+})
+
+const toDossierCharge = (item: ApiDossierCharge): DossierChargeRecord => ({
+  id: item.id,
+  codeReference: item.code_reference,
+  label: item.label,
+  chargeType: item.charge_type,
+  origin: item.origin,
+  service: item.service,
+  chargeDate: item.charge_date,
+  quantite: item.quantite,
+  montantFcfa: item.montant_fcfa,
+  statusReglement: item.status_reglement,
+  transactionId: item.transaction_id,
+})
+
+const toNonDueAttempt = (item: ApiNonDueAttempt) => ({
+  transactionId: item.transaction_id,
+  paymentMethod: item.payment_method,
+  paymentStatus: item.payment_status,
+  createdAt: item.created_at,
+  montantTenteFcfa: item.montant_tente_fcfa,
+  providerStatus: item.provider_status,
+  providerErrorCode: item.provider_error_code,
+  lines: item.lines.map((line) => ({
+    codeReference: line.code_reference,
+    label: line.label,
+    quantite: line.quantite,
+    montantFcfa: line.montant_fcfa,
+  })),
+})
+
+const toDossierDetail = (item: ApiDossierDetail): DossierDetailRecord => ({
+  ...toDossierSummary(item),
+  prochainJalonAt: item.prochain_jalon_at,
+  transactions: item.transactions.map(toTransaction),
+  chargesNonReglees: item.charges_non_reglees.map(toDossierCharge),
+  nonDueAttempts: item.non_due_attempts.map(toNonDueAttempt),
 })
 
 export async function listTransactions(params: TransactionListParams = {}): Promise<TransactionListResponse> {
@@ -196,8 +329,11 @@ export async function createTransaction(payload: CreateTransactionPayload) {
 
   const res = await api.post<ApiTransactionRecord>('/transactions', {
     id_visite: payload.idVisite,
+    hospitalization_case_number: payload.hospitalizationCaseNumber,
+    transaction_kind: payload.transactionKind,
     lignes: payload.lines.map((line) => ({
-      catalogue_item_id: line.catalogueItemId,
+      catalogue_item_id: line.hospitalizationChargeId ? undefined : line.catalogueItemId,
+      hospitalization_charge_id: line.hospitalizationChargeId || undefined,
       quantite: line.quantite,
       payable: line.payable,
       motif_non_honore: line.motifNonHonore || undefined,
@@ -205,4 +341,19 @@ export async function createTransaction(payload: CreateTransactionPayload) {
     paiement: paymentBody,
   })
   return toTransaction(res.data)
+}
+
+export async function listDossiers(search?: string) {
+  const res = await api.get<ApiDossierListResponse>('/transactions/dossiers', {
+    params: { search: search || undefined, page_size: 200 },
+  })
+  return {
+    items: res.data.items.map(toDossierSummary),
+    total: res.data.total,
+  }
+}
+
+export async function getDossierDetail(dossierId: string) {
+  const res = await api.get<ApiDossierDetail>(`/transactions/dossiers/${encodeURIComponent(dossierId)}`)
+  return toDossierDetail(res.data)
 }
