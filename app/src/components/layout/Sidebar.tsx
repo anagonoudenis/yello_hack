@@ -103,47 +103,50 @@ function SidebarInner({
       className="relative flex flex-col h-full bg-[#0F0F0F] border-r border-white/[0.06] overflow-hidden shrink-0 rounded-r-2xl"
       style={{ minWidth: W }}
     >
-      {/* ── Brand ── */}
-      <div className={cn(
-        'flex items-center h-14 border-b border-white/[0.06] shrink-0',
-        collapsed ? 'justify-center px-0' : 'px-4 gap-3'
-      )}>
-        <div className="w-7 h-7 rounded-lg bg-[#FFCB00] flex items-center justify-center shrink-0">
-          <span className="font-mono font-black text-[10px] text-[#1A1A1A] leading-none">CT</span>
-        </div>
-        <AnimatePresence>
-          {!collapsed && (
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15 }}
-              className="flex-1 min-w-0 overflow-hidden"
+      {/* ── Brand + Toggle ── */}
+      {collapsed ? (
+        /* Mode collapsed : toggle seul, centré, grande zone de clic */
+        <div className="flex items-center justify-center h-14 border-b border-white/[0.06] shrink-0">
+          {onToggle ? (
+            <button
+              onClick={onToggle}
+              aria-label="Développer la barre latérale"
+              className="flex items-center justify-center w-10 h-10 rounded-xl text-zinc-400 hover:text-white hover:bg-white/8 transition-all duration-150"
             >
-              <p className="text-white text-[13px] font-semibold leading-none whitespace-nowrap">CaisseTrace</p>
-              <p className="text-zinc-500 text-[10px] mt-0.5 whitespace-nowrap">Santé 229</p>
-            </motion.div>
+              <PanelLeftOpen size={18} strokeWidth={1.6} />
+            </button>
+          ) : (
+            <div className="w-7 h-7 rounded-lg bg-[#FFCB00] flex items-center justify-center">
+              <span className="font-mono font-black text-[10px] text-[#1A1A1A]">CT</span>
+            </div>
           )}
-        </AnimatePresence>
-
-        {/* Toggle button — desktop only */}
-        {onToggle && (
-          <button
-            onClick={onToggle}
-            aria-label={collapsed ? 'Développer la barre' : 'Réduire la barre'}
-            className={cn(
-              'flex items-center justify-center w-6 h-6 rounded-md text-zinc-500',
-              'hover:text-zinc-200 hover:bg-white/8 transition-all duration-150',
-              collapsed && 'absolute right-0 translate-x-0'
-            )}
+        </div>
+      ) : (
+        /* Mode ouvert : logo + nom + toggle */
+        <div className="flex items-center h-14 px-4 gap-3 border-b border-white/[0.06] shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-[#FFCB00] flex items-center justify-center shrink-0">
+            <span className="font-mono font-black text-[10px] text-[#1A1A1A] leading-none">CT</span>
+          </div>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.15, delay: 0.05 }}
+            className="flex-1 min-w-0"
           >
-            {collapsed
-              ? <PanelLeftOpen size={14} />
-              : <PanelLeftClose size={14} />
-            }
-          </button>
-        )}
-      </div>
+            <p className="text-white text-[13px] font-semibold leading-none whitespace-nowrap">CaisseTrace</p>
+            <p className="text-zinc-500 text-[10px] mt-0.5 whitespace-nowrap">Santé 229</p>
+          </motion.div>
+          {onToggle && (
+            <button
+              onClick={onToggle}
+              aria-label="Réduire la barre latérale"
+              className="flex items-center justify-center w-7 h-7 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-white/8 transition-all duration-150 shrink-0"
+            >
+              <PanelLeftClose size={16} strokeWidth={1.6} />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Role badge ── */}
       <AnimatePresence>
