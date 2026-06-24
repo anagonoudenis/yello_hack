@@ -133,8 +133,8 @@ function SidebarInner({
             transition={{ duration: 0.15, delay: 0.05 }}
             className="flex-1 min-w-0"
           >
-            <p className="text-white text-[13px] font-semibold leading-none whitespace-nowrap">CaisseTrace</p>
-            <p className="text-zinc-500 text-[10px] mt-0.5 whitespace-nowrap">Santé 229</p>
+            <p className="text-white text-[13px] font-semibold leading-none whitespace-nowrap">Clinica</p>
+            <p className="text-zinc-500 text-[10px] mt-0.5 whitespace-nowrap">Hôpital Saint Jean</p>
           </motion.div>
           {onToggle && (
             <button

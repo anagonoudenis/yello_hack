@@ -58,7 +58,7 @@ export default function Login() {
                 <div className="mb-8">
                   <p className="text-[14px] font-medium text-zinc-500">Ravi de vous retrouver</p>
                   <h1 className="mt-3 text-[30px] font-bold leading-[1.05] text-[#18181B] sm:text-[36px]">
-                    Connectez-vous a votre espace de caisse
+                    Connectez-vous à Clinica
                   </h1>
                 </div>
 

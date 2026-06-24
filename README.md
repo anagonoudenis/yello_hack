@@ -1,4 +1,4 @@
-# CaisseTrace Santé 229
+# Clinica
 
 Système de gestion de caisse hospitalière — Hôpital Saint Jean, Bénin.  
 Hackathon MTN Bénin × Ministère de la Santé — Juin 2026.
