@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Wallet, ClipboardList, FileText,
   AlertTriangle, Users, BookOpen, Activity, BarChart3,
-  Building2, UserCog, ScrollText, LogOut, Menu, X,
+  Building2, UserCog, ScrollText, LogOut, Menu,
   PanelLeftClose, PanelLeftOpen,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -100,7 +100,7 @@ function SidebarInner({
     <motion.aside
       animate={{ width: W }}
       transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
-      className="relative flex flex-col h-full bg-[#0F0F0F] border-r border-white/[0.06] overflow-hidden shrink-0"
+      className="relative flex flex-col h-full bg-[#0F0F0F] border-r border-white/[0.06] overflow-hidden shrink-0 rounded-r-2xl"
       style={{ minWidth: W }}
     >
       {/* ── Brand ── */}
@@ -255,45 +255,27 @@ function SidebarInner({
         )}
       </nav>
 
-      {/* ── User footer ── */}
-      <div className={cn(
-        'border-t border-white/[0.06] shrink-0',
-        collapsed ? 'py-3 flex flex-col items-center gap-2' : 'px-3 py-3 flex items-center gap-2.5'
-      )}>
+      {/* ── Logout ── */}
+      <div className="border-t border-white/[0.06] shrink-0 px-2 py-3">
         {collapsed ? (
-          <>
-            <Tooltip label={`${user.nom} — ${user.role}`}>
-              <div className="w-8 h-8 rounded-full bg-[#FFCB00] flex items-center justify-center cursor-default">
-                <span className="font-mono font-black text-[10px] text-[#1A1A1A]">{user.initiales}</span>
-              </div>
-            </Tooltip>
-            <Tooltip label="Se déconnecter">
-              <button
-                onClick={() => { signOut(); navigate('/login') }}
-                aria-label="Se déconnecter"
-                className="w-7 h-7 flex items-center justify-center rounded-md text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-all"
-              >
-                <LogOut size={13} />
-              </button>
-            </Tooltip>
-          </>
-        ) : (
-          <>
-            <div className="w-7 h-7 rounded-full bg-[#FFCB00] flex items-center justify-center shrink-0">
-              <span className="font-mono font-black text-[10px] text-[#1A1A1A]">{user.initiales}</span>
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-zinc-200 text-[12px] font-semibold truncate leading-none">{user.nom}</p>
-              <p className="text-zinc-500 text-[10px] capitalize mt-0.5">{user.role}</p>
-            </div>
+          <Tooltip label="Se déconnecter">
             <button
               onClick={() => { signOut(); navigate('/login') }}
               aria-label="Se déconnecter"
-              className="p-1.5 rounded-md text-zinc-600 hover:text-red-400 hover:bg-red-500/10 transition-all shrink-0"
+              className="flex items-center justify-center w-9 h-9 rounded-lg mx-auto text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
             >
-              <LogOut size={13} />
+              <LogOut size={15} />
             </button>
-          </>
+          </Tooltip>
+        ) : (
+          <button
+            onClick={() => { signOut(); navigate('/login') }}
+            aria-label="Se déconnecter"
+            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-zinc-500 hover:text-red-400 hover:bg-red-500/10 transition-all group"
+          >
+            <LogOut size={15} className="shrink-0" />
+            <span className="text-[13px] font-medium">Déconnexion</span>
+          </button>
         )}
       </div>
     </motion.aside>
@@ -344,13 +326,6 @@ export function Sidebar() {
               className="lg:hidden fixed left-0 top-0 bottom-0 z-50 flex h-full"
             >
               <SidebarInner collapsed={false} onClose={() => setMobileOpen(false)} />
-              <button
-                onClick={() => setMobileOpen(false)}
-                aria-label="Fermer"
-                className="absolute top-4 right-[-38px] w-8 h-8 rounded-full bg-white/10 backdrop-blur-sm flex items-center justify-center text-white/70 hover:text-white transition-colors"
-              >
-                <X size={14} />
-              </button>
             </motion.div>
           </>
         )}
