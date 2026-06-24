@@ -1,168 +1,227 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { CheckCircle, Loader2 } from 'lucide-react'
+import { Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { formatCFA } from '@/lib/formatCFA'
-import { useMoMo } from '@/hooks/useMoMo'
 import { fadeIn } from '@/lib/motion'
+
+/* ─── Types exportés (utilisés par Encaissement.tsx) ── */
+export type PaymentSubmission =
+  | { method: 'especes'; montantRecuFcfa: number }
+  | { method: 'momo';   telephonePaiement: string }
+  | { method: 'cheque'; chequeNumero: string; chequeBanque: string; chequeTitulaire: string }
 
 type PayTab = 'momo' | 'especes' | 'cheque'
 
 interface PaymentTabsProps {
-  montant: number
-  telephone: string
-  onPaid: (method: PayTab, ref?: string) => void
+  montant:    number
+  telephone:  string
+  submitting: boolean
+  onSubmit:   (submission: PaymentSubmission) => Promise<void> | void
 }
 
-export function PaymentTabs({ montant, telephone, onPaid }: PaymentTabsProps) {
+const TABS: { id: PayTab; label: string }[] = [
+  { id: 'momo',    label: 'Mobile Money' },
+  { id: 'especes', label: 'Espèces' },
+  { id: 'cheque',  label: 'Chèque' },
+]
+
+const inputCls = 'h-11 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3.5 text-[14px] outline-none transition-all focus:border-[#FFCB00] focus:bg-white focus:shadow-[0_0_0_3px_rgba(255,203,0,0.12)] placeholder:text-zinc-300'
+const btnCls   = 'flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#1A1A1A] text-[14px] font-semibold text-white transition-all hover:bg-zinc-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40'
+
+export function PaymentTabs({ montant, telephone, submitting, onSubmit }: PaymentTabsProps) {
   const [tab, setTab] = useState<PayTab>('momo')
-  const { status, ref, initier, reset } = useMoMo()
+
+  /* ─── MoMo ─── */
+  const [momoPhone, setMomoPhone] = useState(telephone)
+
+  /* ─── Espèces ─── */
   const [montantRecu, setMontantRecu] = useState('')
-  const [cheque, setCheque] = useState({ numero: '', banque: '', titulaire: '', montant: String(montant) })
+  const monnaie = montantRecu ? Math.max(0, Number(montantRecu) - montant) : null
 
-  const TABS: { id: PayTab; label: string }[] = [
-    { id: 'momo', label: 'MoMo' },
-    { id: 'especes', label: 'Espèces' },
-    { id: 'cheque', label: 'Chèque' },
-  ]
+  /* ─── Chèque ─── */
+  const [chequeNumero,    setChequeNumero]    = useState('')
+  const [chequeBanque,    setChequeBanque]    = useState('')
+  const [chequeTitulaire, setChequeTitulaire] = useState('')
 
-  const monnaie = montantRecu ? Math.max(0, Number(montantRecu) - montant) : 0
+  /* ─── Soumissions ─── */
+  const handleMomo = () => {
+    if (!momoPhone.trim()) return
+    void onSubmit({ method: 'momo', telephonePaiement: momoPhone.trim() })
+  }
 
-  const handleMoMo = () => {
-    if (status === 'confirmed' && ref) { onPaid('momo', ref); return }
-    initier(montant, telephone)
+  const handleEspeces = () => {
+    const recu = Number(montantRecu)
+    if (!recu || recu < montant) return
+    void onSubmit({ method: 'especes', montantRecuFcfa: recu })
+  }
+
+  const handleCheque = () => {
+    if (!chequeNumero.trim() || !chequeBanque.trim() || !chequeTitulaire.trim()) return
+    void onSubmit({
+      method: 'cheque',
+      chequeNumero: chequeNumero.trim(),
+      chequeBanque: chequeBanque.trim(),
+      chequeTitulaire: chequeTitulaire.trim(),
+    })
   }
 
   return (
     <div className="flex flex-col">
       {/* Tab bar */}
-      <div className="flex border-b border-[#E4E4E7] mb-4">
+      <div className="flex border-b border-zinc-100 mb-5">
         {TABS.map((t) => (
           <button
             key={t.id}
-            onClick={() => { setTab(t.id); reset() }}
+            type="button"
+            onClick={() => setTab(t.id)}
             className={cn(
-              'flex-1 py-2.5 text-[14px] font-medium transition-colors duration-75 relative',
-              tab === t.id ? 'text-zinc-900' : 'text-zinc-400 hover:text-zinc-700'
+              'flex-1 py-2.5 text-[13px] font-medium transition-colors relative',
+              tab === t.id ? 'text-zinc-900' : 'text-zinc-400 hover:text-zinc-600'
             )}
           >
             {t.label}
             {tab === t.id && (
-              <span className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#FFCB00]" />
+              <span className="absolute bottom-0 left-0 right-0 h-0.5 rounded-full bg-[#FFCB00]" />
             )}
           </button>
         ))}
       </div>
 
       <AnimatePresence mode="wait">
+        {/* ── MoMo ── */}
         {tab === 'momo' && (
-          <motion.div key="momo" variants={fadeIn} initial="initial" animate="animate" exit="exit" className="space-y-4">
+          <motion.div key="momo" variants={fadeIn} initial="initial" animate="animate" exit="exit"
+            className="space-y-4">
             <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 mb-1.5">Montant verrouillé</p>
-              <div className="bg-[#111] rounded-xl px-4 py-3">
-                <p className="font-mono font-bold text-[18px] text-[#FFCB00]">{formatCFA(montant)}</p>
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-400">
+                Montant à payer
+              </p>
+              <div className="flex items-center justify-between rounded-xl bg-[#111] px-4 py-3">
+                <span className="font-mono text-[18px] font-bold text-[#FFCB00]">{formatCFA(montant)}</span>
+                <span className="text-[11px] text-zinc-500">MTN MoMo</span>
               </div>
             </div>
             <div>
-              <label htmlFor="tel-momo" className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 block mb-1.5">Numéro patient</label>
+              <label htmlFor="momo-phone"
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-400">
+                Numéro patient
+              </label>
               <input
-                id="tel-momo"
-                readOnly
-                value={telephone}
-                className="w-full px-3 py-2.5 rounded-lg text-[14px] font-mono border-l-[3px] border-[#FFCB00] border border-[#E4E4E7] bg-[#FAFAFA] text-zinc-900"
+                id="momo-phone"
+                type="tel"
+                value={momoPhone}
+                onChange={(e) => setMomoPhone(e.target.value)}
+                placeholder="+229 97 00 00 00"
+                className={cn(inputCls, momoPhone && 'border-[#FFCB00] border-l-4')}
               />
             </div>
-            <div>
-              <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 mb-1.5">Code USSD backup</p>
-              <div className="px-3 py-2 rounded-lg border border-zinc-200 bg-zinc-50">
-                <p className="font-mono text-[13px] text-zinc-700">*144*{montant}#</p>
-              </div>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2.5">
+              <p className="font-mono text-[13px] text-zinc-500">Code USSD : *144*{montant}#</p>
             </div>
-            {status === 'pending' && (
-              <motion.div variants={fadeIn} initial="initial" animate="animate" className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-[#F59E0B] animate-pulse-dot" />
-                <span className="text-[13px] text-zinc-600">En attente de confirmation…</span>
-              </motion.div>
-            )}
-            {status === 'confirmed' && ref && (
-              <motion.div variants={fadeIn} initial="initial" animate="animate" className="flex items-center gap-2 p-3 rounded-lg bg-[#F0FDF4] border border-[#BBF7D0]">
-                <CheckCircle size={16} className="text-[#22C55E] flex-shrink-0" />
-                <div>
-                  <p className="text-[11px] font-semibold text-[#166534]">Confirmé</p>
-                  <p className="font-mono text-[13px] text-[#166534]">{ref}</p>
-                </div>
-              </motion.div>
-            )}
             <button
-              onClick={handleMoMo}
-              disabled={status === 'pending'}
-              className="w-full py-3 rounded-lg bg-[#FFCB00] hover:bg-[#EDBA00] active:bg-[#D4A800] text-[#1A1A1A] text-[14px] font-semibold transition-colors duration-75 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              type="button"
+              onClick={handleMomo}
+              disabled={submitting || !momoPhone.trim()}
+              className={btnCls}
             >
-              {status === 'pending' && <Loader2 size={15} className="animate-spin" />}
-              {status === 'confirmed' ? 'Valider l\'encaissement' : 'Initier le paiement'}
+              {submitting && <Loader2 size={15} className="animate-spin" />}
+              {submitting ? 'Envoi en cours…' : 'Initier le paiement Mobile Money'}
             </button>
           </motion.div>
         )}
 
+        {/* ── Espèces ── */}
         {tab === 'especes' && (
-          <motion.div key="especes" variants={fadeIn} initial="initial" animate="animate" exit="exit" className="space-y-4">
+          <motion.div key="especes" variants={fadeIn} initial="initial" animate="animate" exit="exit"
+            className="space-y-4">
             <div>
-              <label htmlFor="montant-recu" className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 block mb-1.5">Montant reçu</label>
+              <label htmlFor="montant-recu"
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-400">
+                Montant à payer
+              </label>
+              <div className="flex items-center justify-between rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
+                <span className="font-mono text-[18px] font-bold text-zinc-900">{formatCFA(montant)}</span>
+              </div>
+            </div>
+            <div>
+              <label htmlFor="montant-recu"
+                className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-400">
+                Montant reçu du patient
+              </label>
               <input
                 id="montant-recu"
                 type="number"
                 value={montantRecu}
                 onChange={(e) => setMontantRecu(e.target.value)}
                 placeholder={String(montant)}
-                className="w-full px-3 py-2.5 rounded-lg text-[14px] font-mono border border-[#E4E4E7] bg-[#FAFAFA] focus:border-[#FFCB00] focus:shadow-[0_0_0_3px_rgba(255,203,0,0.30)] outline-none transition-all duration-75"
+                min={montant}
+                className={inputCls}
               />
             </div>
-            {montantRecu && (
-              <motion.div variants={fadeIn} initial="initial" animate="animate" className="p-3 rounded-lg bg-[#F0FDF4] border border-[#BBF7D0]">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[#166534] mb-0.5">Monnaie à rendre</p>
-                <p className="font-mono font-bold text-[18px] text-[#166534]">{formatCFA(monnaie)}</p>
+            {monnaie !== null && (
+              <motion.div variants={fadeIn} initial="initial" animate="animate"
+                className={cn('rounded-xl border px-4 py-3',
+                  monnaie >= 0 ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'
+                )}>
+                <p className={cn('text-[11px] font-semibold uppercase tracking-widest mb-1',
+                  monnaie >= 0 ? 'text-green-600' : 'text-red-600')}>
+                  {monnaie >= 0 ? 'Monnaie à rendre' : 'Montant insuffisant'}
+                </p>
+                <p className={cn('font-mono text-[18px] font-bold',
+                  monnaie >= 0 ? 'text-green-700' : 'text-red-700')}>
+                  {formatCFA(Math.abs(monnaie))}
+                </p>
               </motion.div>
             )}
             <button
-              onClick={() => onPaid('especes')}
-              disabled={!montantRecu || Number(montantRecu) < montant}
-              className="w-full py-3 rounded-lg bg-[#FFCB00] hover:bg-[#EDBA00] text-[#1A1A1A] text-[14px] font-semibold transition-colors duration-75 disabled:opacity-40 disabled:cursor-not-allowed"
+              type="button"
+              onClick={handleEspeces}
+              disabled={submitting || !montantRecu || Number(montantRecu) < montant}
+              className={btnCls}
             >
-              Encaisser
+              {submitting && <Loader2 size={15} className="animate-spin" />}
+              {submitting ? 'Enregistrement…' : 'Encaisser en espèces'}
             </button>
           </motion.div>
         )}
 
+        {/* ── Chèque ── */}
         {tab === 'cheque' && (
-          <motion.div key="cheque" variants={fadeIn} initial="initial" animate="animate" exit="exit" className="space-y-3">
-            {(['numero', 'banque', 'titulaire'] as const).map((field) => (
-              <div key={field}>
-                <label htmlFor={`cheque-${field}`} className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 block mb-1.5">
-                  {field === 'numero' ? 'N° chèque' : field === 'banque' ? 'Banque' : 'Titulaire'}
+          <motion.div key="cheque" variants={fadeIn} initial="initial" animate="animate" exit="exit"
+            className="space-y-3">
+            {([
+              { id: 'numero',    label: 'N° de chèque', value: chequeNumero,    set: setChequeNumero    },
+              { id: 'banque',    label: 'Banque',        value: chequeBanque,    set: setChequeBanque    },
+              { id: 'titulaire', label: 'Titulaire',     value: chequeTitulaire, set: setChequeTitulaire },
+            ] as const).map((f) => (
+              <div key={f.id}>
+                <label htmlFor={`cheque-${f.id}`}
+                  className="mb-1.5 block text-[11px] font-semibold uppercase tracking-widest text-zinc-400">
+                  {f.label}
                 </label>
                 <input
-                  id={`cheque-${field}`}
-                  value={cheque[field]}
-                  onChange={(e) => setCheque({ ...cheque, [field]: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-lg text-[14px] border border-[#E4E4E7] bg-[#FAFAFA] focus:border-[#FFCB00] focus:shadow-[0_0_0_3px_rgba(255,203,0,0.30)] outline-none transition-all duration-75"
+                  id={`cheque-${f.id}`}
+                  value={f.value}
+                  onChange={(e) => f.set(e.target.value)}
+                  className={inputCls}
                 />
               </div>
             ))}
             <div>
-              <label htmlFor="cheque-montant" className="text-[11px] font-semibold uppercase tracking-[0.08em] text-zinc-500 block mb-1.5">Montant</label>
-              <input
-                id="cheque-montant"
-                readOnly
-                value={formatCFA(montant)}
-                className="w-full px-3 py-2.5 rounded-lg text-[14px] font-mono border-l-[3px] border-[#FFCB00] border border-[#E4E4E7] bg-[#FAFAFA] text-zinc-900"
-              />
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-400">Montant</p>
+              <div className="flex items-center rounded-xl border-l-4 border-[#FFCB00] border border-zinc-200 bg-zinc-50 px-4 py-2.5">
+                <span className="font-mono font-bold text-zinc-900">{formatCFA(montant)}</span>
+              </div>
             </div>
             <button
-              onClick={() => onPaid('cheque')}
-              disabled={!cheque.numero || !cheque.banque || !cheque.titulaire}
-              className="w-full py-3 rounded-lg bg-[#FFCB00] hover:bg-[#EDBA00] text-[#1A1A1A] text-[14px] font-semibold transition-colors duration-75 disabled:opacity-40 disabled:cursor-not-allowed"
+              type="button"
+              onClick={handleCheque}
+              disabled={submitting || !chequeNumero.trim() || !chequeBanque.trim() || !chequeTitulaire.trim()}
+              className={btnCls}
             >
-              Enregistrer le chèque
+              {submitting && <Loader2 size={15} className="animate-spin" />}
+              {submitting ? 'Enregistrement…' : 'Enregistrer le chèque'}
             </button>
           </motion.div>
         )}
