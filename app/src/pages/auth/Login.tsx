@@ -52,11 +52,10 @@ export default function Login() {
             transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
             className="flex min-h-screen items-center justify-center px-5 py-10 lg:h-screen lg:min-h-0 lg:px-10"
           >
-            <div className="w-full max-w-[420px]">
-              <div className="rounded-[28px] border border-zinc-100/80 bg-white p-7 shadow-[0_8px_40px_rgba(0,0,0,0.07)]">
+            <div className="w-full max-w-[400px]">
 
                 {/* Logo Clinica */}
-                <div className="mb-6 flex items-center gap-3">
+                <div className="mb-8 flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#FFCB00] shadow-sm shrink-0">
                     <span className="font-mono font-black text-[11px] text-[#1A1A1A]">CL</span>
                   </div>
@@ -152,7 +151,7 @@ export default function Login() {
                         key={user.id}
                         type="button"
                         onClick={() => { setId(user.id); setPwd('1234'); setError('') }}
-                        className="flex w-full items-center gap-3 rounded-2xl border border-zinc-200 bg-[#FCFCFD] px-3 py-2.5 text-left transition-all hover:border-zinc-300 hover:bg-white"
+                        className="flex w-full items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white/70 px-3 py-2.5 text-left transition-all hover:border-zinc-300 hover:bg-white"
                       >
                         <span
                           className="h-2 w-2 shrink-0 rounded-full"
@@ -167,7 +166,6 @@ export default function Login() {
                   </div>
                 </div>
 
-              </div>
             </div>
           </motion.section>
 
